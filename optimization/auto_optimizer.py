@@ -233,40 +233,43 @@ class OptimizadorAutomatico:
             
             def callback_convergencia(study, trial):
                 nonlocal convergencia_detectada, trial_convergencia
-                
+
                 # No evaluar antes de trials_minimos
                 if trial.number < self.config_convergencia["trials_minimos"]:
                     return
-                
+
                 # Evaluar cada 10 trials
                 if trial.number % 10 != 0:
                     return
-                
+
                 ventana = self.config_convergencia["ventana"]
                 if len(study.trials) < ventana:
                     return
+
+                # Calcular mejora en la ventana - FILTRAR valores None
+                ultimos_scores = []
+                for t in study.trials[-ventana:]:
+                    if t.value is not None:
+                        ultimos_scores.append(t.value)
                 
-                # Calcular mejora en la ventana
-                ultimos_scores = [t.value for t in study.trials[-ventana:]]
+                # Si no hay suficientes valores válidos, salir
+                if len(ultimos_scores) < ventana // 2:
+                    return
+                    
                 mejor_en_ventana = max(ultimos_scores)
                 peor_en_ventana = min(ultimos_scores)
                 
-                if peor_en_ventana > 0:
-                    mejora_relativa = (mejor_en_ventana - peor_en_ventana) / peor_en_ventana
+                # Evitar división por cero
+                if peor_en_ventana == 0:
+                    mejora = 0
                 else:
-                    mejora_relativa = 0
+                    mejora = (mejor_en_ventana - peor_en_ventana) / abs(peor_en_ventana)
                 
                 tolerancia = self.config_convergencia["tolerancia"]
-                mejor_absoluto = study.best_value
-                score_minimo = self.config_convergencia.get("mejor_score_minimo", 0.85)
                 
-                # Verificar convergencia
-                if mejora_relativa < tolerancia or mejor_absoluto > score_minimo:
+                if mejora < tolerancia:
                     convergencia_detectada = True
                     trial_convergencia = trial.number
-                    self._log(f"\n   🎯 Convergencia detectada en trial {trial_convergencia}")
-                    self._log(f"      Mejora en últimos {ventana} trials: {mejora_relativa:.3%}")
-                    self._log(f"      Mejor score actual: {mejor_absoluto:.4f}")
                     study.stop()
             
             # Crear estudio con callback
@@ -384,6 +387,9 @@ class OptimizadorAutomatico:
         
         metrics_config = self._metrics_config_para_fase(3)
         
+        # 🔧 CORRECCIÓN: Usar rangos acotados alrededor de params_optimos
+        config_validacion = self._acotar_rangos(params_optimos)
+        
         resultados_validacion = []
         mejores_params = params_optimos
         mejor_score = 0
@@ -393,7 +399,7 @@ class OptimizadorAutomatico:
             
             pf, params = run_single_optuna(
                 df=self.df,
-                config=self.config_base,
+                config=config_validacion,  # 🔧 ANTES: self.config_base (incorrecto)
                 n_trials=trials_por_corrida,
                 modo_paralelo=modo_paralelo,
                 features=self.features,
