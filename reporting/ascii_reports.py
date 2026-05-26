@@ -386,6 +386,69 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     return reporte
 
 
+
+def generar_tabla_overfitting(mejor_corrida, pf_final, trades_final, equity_curve_final):
+    """
+    Genera la tabla comparativa de overfitting (Train vs Test vs Final)
+    
+    Args:
+        mejor_corrida: Diccionario con métricas de la mejor corrida (contiene pf_train, pf_test, etc.)
+        pf_final: Profit Factor final sobre datos completos
+        trades_final: Lista de trades finales
+        equity_curve_final: Serie de equity final
+    
+    Returns:
+        str: Tabla ASCII lista para agregar al reporte
+    """
+    lines = []
+    lines.append("")
+    lines.append("=" * 100)
+    lines.append("  📊 VALIDACIÓN IS/OOS - COMPARATIVA TRAIN vs TEST vs FINAL")
+    lines.append("=" * 100)
+    lines.append("")
+    lines.append(f"{'Métrica':<20} {'TRAIN (70%)':<18} {'TEST (30%)':<18} {'FINAL (100%)':<18}")
+    lines.append("-" * 80)
+    
+    # Profit Factor
+    pf_train_val = mejor_corrida.get('pf_train', 0)
+    pf_test_val = mejor_corrida.get('pf_test', 0)
+    lines.append(f"{'Profit Factor':<20} {pf_train_val:<18.2f} {pf_test_val:<18.2f} {pf_final:<18.2f}")
+    
+    # Win Rate
+    wr_train_val = mejor_corrida.get('winrate_train', 0)
+    wr_test_val = mejor_corrida.get('winrate_test', 0)
+    winrate_final = len([t for t in trades_final if t['net_pnl'] > 0]) / len(trades_final) * 100 if trades_final else 0
+    lines.append(f"{'Win Rate':<20} {wr_train_val:<17.1f}% {wr_test_val:<17.1f}% {winrate_final:<17.1f}%")
+    
+    # Drawdown
+    dd_train_val = mejor_corrida.get('drawdown_train', 0)
+    dd_test_val = mejor_corrida.get('drawdown_test', 0)
+    drawdown_final = calcular_drawdown_maximo(list(equity_curve_final)) if len(equity_curve_final) > 0 else 0
+    lines.append(f"{'Drawdown Máx':<20} {dd_train_val:<17.2f}% {dd_test_val:<17.2f}% {drawdown_final:<17.2f}%")
+    
+    # N° Trades
+    trades_train_val = mejor_corrida.get('trades_train', 0)
+    trades_test_val = mejor_corrida.get('trades_test', 0)
+    lines.append(f"{'N° Trades':<20} {trades_train_val:<18} {trades_test_val:<18} {len(trades_final):<18}")
+    
+    lines.append("-" * 80)
+    
+    # Interpretación automática
+    if pf_train_val > 0:
+        degradacion_pf = (1 - pf_test_val / pf_train_val) * 100
+        if degradacion_pf < 20:
+            lines.append("\n✅ ROBUSTO: La degradación del Profit Factor es aceptable (<20%).")
+        elif degradacion_pf < 40:
+            lines.append("\n⚠️ SOBREAJUSTE MODERADO: La degradación es significativa (20-40%).")
+        else:
+            lines.append("\n❌ SOBREAJUSTE SEVERO: La estrategia no generaliza (>40% degradación).")
+    lines.append("=" * 100)
+    
+    return "\n".join(lines)
+
+
+
+
 def guardar_reporte_txt(ruta_txt, reporte_ascii):
     with open(ruta_txt, "w", encoding="utf-8") as f:
         f.write(reporte_ascii)

@@ -33,7 +33,7 @@ from data_providers import CCXTProvider, YFinanceProvider
 from config import CONSTANTS, FEATURES, TIMEFRAME_CONFIG, DEFAULT_RANGES
 from indicators import ema, sma, wma, hma, dema, ma, rma, rsi_tv, adx_tv
 from backtest import run_backtest, calcular_drawdown_maximo, calcular_score
-from reporting import build_ascii_table, generar_reporte_ascii, guardar_reporte_txt, loguear_reporte_en_console
+from reporting import build_ascii_table, generar_reporte_ascii, guardar_reporte_txt, loguear_reporte_en_console, generar_tabla_overfitting
 from mis_graficos import generar_grafico, generar_preview_velas
 
 
@@ -1224,6 +1224,7 @@ def run_optuna_with_gui(values, stop_event=None):
     
     version_optimizador = "16"
     
+    
     # Generar reporte ASCII (usando los resultados finales)
     reporte_ascii = generar_reporte_ascii(
         values=values,
@@ -1235,6 +1236,19 @@ def run_optuna_with_gui(values, stop_event=None):
         search_space_info=search_space_info,
     )
     
+    # ============================================================
+    # AGREGAR TABLA DE OVERFITTING SI ESTÁ ACTIVADO
+    # ============================================================
+    if use_oos:
+        tabla_overfitting = generar_tabla_overfitting(
+            mejor_corrida=mejor_corrida,
+            pf_final=pf_final,
+            trades_final=trades_final,
+            equity_curve_final=equity_curve_final
+        )
+        reporte_ascii = reporte_ascii + "\n" + tabla_overfitting
+    
+
     # Ruta del TXT
     safe_symbol = symbol.replace("/", "_").replace(":", "_")
     timestamp = datetime.now().strftime("%Y.%m.%d-%H_%M")
