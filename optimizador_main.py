@@ -581,21 +581,32 @@ def objective(trial, df, config, features, metrics_config, study_cache, study_lo
 
     # --- RSI ---
     # ------------------------
-
     usar_rsi_long = resolve("use_rsi_long", "usar_rsi_long")
     usar_rsi_short = resolve("use_rsi_short", "usar_rsi_short")
 
+    # RSI Length (solo si al menos uno está activo)
     if usar_rsi_long or usar_rsi_short:
         params["rsi_length"] = trial.suggest_int("rsi_length", *config["rsi_length_range"])
-        params["rsi_min"] = trial.suggest_float("rsi_min", *config["rsi_min_range"], step=0.1)
-        params["rsi_max"] = trial.suggest_float("rsi_max", *config["rsi_max_range"], step=0.1)
-        # Validación: rsi_min debe ser >50 (sobrecompra), rsi_max <50 (sobreventa)
-        if params["rsi_min"] <= 50 or params["rsi_max"] >= 50:
-            return 0.0
     else:
         params["rsi_length"] = 14
-        params["rsi_min"] = 55.0
-        params["rsi_max"] = 45.0
+
+    # RSI min (solo si LONG está activo)
+    if usar_rsi_long:
+        params["rsi_min"] = trial.suggest_float("rsi_min", *config["rsi_min_range"], step=0.1)
+        # Validación: rsi_min debe ser >50 (sobrecompra)
+        if params["rsi_min"] <= 50:
+            return 0.0
+    else:
+        params["rsi_min"] = 55.0  # valor por defecto (no se usará)
+
+    # RSI max (solo si SHORT está activo)
+    if usar_rsi_short:
+        params["rsi_max"] = trial.suggest_float("rsi_max", *config["rsi_max_range"], step=0.1)
+        # Validación: rsi_max debe ser <50 (sobreventa)
+        if params["rsi_max"] >= 50:
+            return 0.0
+    else:
+        params["rsi_max"] = 45.0  # valor por defecto (no se usará)
 
 
     # --- ADX ---
@@ -1097,7 +1108,7 @@ def run_optuna_with_gui(values, stop_event=None):
             print("[INFO] Sin resultados válidos en esta corrida.")
             continue
 
-        # ─── TRADUCCIÓN DE LLAVES DE OPTUNA (CORRECCIÓN DE ERROR) ───
+        # ─── TRADUCCIÓN DE LLAVES DE OPTUNA ───
         MAPEO_AUTO_BACKTEST = {
             "usar_rsi_long":  "use_rsi_long",
             "usar_rsi_short": "use_rsi_short",
@@ -1121,18 +1132,37 @@ def run_optuna_with_gui(values, stop_event=None):
             else:
                 cleaned_best_params[k] = v
 
-        # Removemos las opciones que digan "auto" de features para que no pasen texto al backtest
+        # Removemos las opciones que digan "auto"
         cleaned_features = {k: v for k, v in features.items() if v != "auto"}
 
-        # VALIDACIÓN FINAL sobre los datos de prueba (Out-of-Sample) utilizando parámetros limpios
-        pf_oos, equity_curve, trades = run_backtest(df_test, **cleaned_best_params, **cleaned_features, **CONSTANTS)
+        # --- NUEVO: Backtest en TRAIN para obtener métricas de entrenamiento ---
+        pf_train_backtest, equity_curve_train, trades_train = run_backtest(df_train, **cleaned_best_params, **cleaned_features, **CONSTANTS)
+
+        # Calcular métricas de TRAIN
+        winrate_train = len([t for t in trades_train if t['net_pnl'] > 0]) / len(trades_train) * 100 if trades_train else 0
+        drawdown_train = calcular_drawdown_maximo(list(equity_curve_train))
+        n_trades_train = len(trades_train)
+
+        # --- VALIDACIÓN FINAL sobre TEST ---
+        pf_oos, equity_curve_test, trades_test = run_backtest(df_test, **cleaned_best_params, **cleaned_features, **CONSTANTS)
+
+        # Calcular métricas de TEST
+        winrate_test = len([t for t in trades_test if t['net_pnl'] > 0]) / len(trades_test) * 100 if trades_test else 0
+        drawdown_test = calcular_drawdown_maximo(list(equity_curve_test))
+        n_trades_test = len(trades_test)
 
         resultados.append({
-            "pf_train": pf_train,
-            "pf_final": pf_oos,
-            "params": cleaned_best_params, # Guardamos las variables corregidas para el Reporte Final
-            "equity": equity_curve,
-            "trades": trades,
+            "pf_train": pf_train_backtest,
+            "pf_test": pf_oos,
+            "winrate_train": winrate_train,
+            "winrate_test": winrate_test,
+            "drawdown_train": drawdown_train,
+            "drawdown_test": drawdown_test,
+            "trades_train": n_trades_train,
+            "trades_test": n_trades_test,
+            "params": cleaned_best_params,
+            "equity": equity_curve_test,
+            "trades": trades_test,
             "is_oos": use_oos
         })
 
@@ -1143,15 +1173,47 @@ def run_optuna_with_gui(values, stop_event=None):
 
 
 
+    #---------------------------------------------------------------------------------------------------------------------------------------
 
-
-    # Elegir la mejor corrida por pf_final (o la métrica que prefieras)
-    mejor = max(resultados, key=lambda r: r["pf_final"])
-    best_equity = mejor["equity"]
-    best_trades = mejor["trades"]
-    best_params = mejor["params"]  # cleaned_best_params
-
-    # Info de espacio de búsqueda (si tenés un calculador, enchufalo acá)
+    # ============================================================
+    # ELEGIR LA MEJOR CORRIDA Y BACKTEST FINAL
+    # ============================================================
+    
+    # Elegir la mejor corrida por pf_test (validación)
+    mejor_corrida = max(resultados, key=lambda r: r["pf_test"])
+    best_params = mejor_corrida["params"]
+    
+    # Limpiar features (quitar "auto")
+    cleaned_features = {k: v for k, v in features.items() if v != "auto"}
+    
+    # ============================================================
+    # BACKTEST FINAL SOBRE DATOS COMPLETOS (df_full)
+    # ============================================================
+    if use_oos:
+        print("\n[INFO] Overfitting activado - Generando resultados finales sobre el total de datos...")
+        # Ejecutar backtest con los mejores parámetros sobre TODOS los datos
+        pf_final, equity_curve_final, trades_final = run_backtest(
+            df_full,  # <-- DATOS COMPLETOS (1000 velas)
+            **best_params,
+            **cleaned_features,
+            **CONSTANTS
+        )
+        print(f"[INFO] Resultados finales (sobre {len(df_full)} velas):")
+        print(f"   Profit Factor: {pf_final:.2f}")
+        print(f"   Trades totales: {len(trades_final)}")
+    else:
+        print("\n[INFO] Modo normal - Usando resultados de la mejor corrida...")
+        # Comportamiento original: usar los trades que ya vienen de la optimización
+        pf_final = mejor_corrida["pf_test"]
+        equity_curve_final = mejor_corrida["equity"]
+        trades_final = mejor_corrida["trades"]
+        print(f"[INFO] Resultados (sobre {len(df_full)} velas):")
+        print(f"   Profit Factor: {pf_final:.2f}")
+        print(f"   Trades totales: {len(trades_final)}")
+    
+    # ============================================================
+    # INFO DE ESPACIO DE BÚSQUEDA (opcional)
+    # ============================================================
     search_space_info = {
         "dim_totales": "N/A",
         "complejidad": "N/A",
@@ -1159,70 +1221,67 @@ def run_optuna_with_gui(values, stop_event=None):
         "trials_recomendados": "N/A",
         "trials_usados": values.get("trials", "N/A"),
     }
-
+    
     version_optimizador = "16"
-
+    
+    # Generar reporte ASCII (usando los resultados finales)
     reporte_ascii = generar_reporte_ascii(
         values=values,
         config=config,
         best_params=best_params,
-        equity_curve=best_equity,
-        trades=best_trades,
+        equity_curve=equity_curve_final,
+        trades=trades_final,
         version_optimizador=version_optimizador,
         search_space_info=search_space_info,
     )
-
-    # Ruta del TXT (similar a como guardás CSV y gráfico)
+    
+    # Ruta del TXT
     safe_symbol = symbol.replace("/", "_").replace(":", "_")
     timestamp = datetime.now().strftime("%Y.%m.%d-%H_%M")
     ruta_txt = os.path.join(output_dir, f"{timestamp} Reporte {safe_symbol}_{timeframe}.txt")
     os.makedirs("reportes", exist_ok=True)
     guardar_reporte_txt(ruta_txt, reporte_ascii)
-
-    # Log en consola (y opcionalmente en GUI si le pasás window)
-    loguear_reporte_en_console(reporte_ascii)
-
-
-
-
-
-
-    # 7) Reporte Final (Basado en el mejor PF del set de Validación)
     
-    mejor = max(resultados, key=lambda x: x["pf_final"])
-    trades = mejor['trades']
+    # Log en consola
+    loguear_reporte_en_console(reporte_ascii)
+    
+    # ============================================================
+    # REPORTE DE RENDIMIENTO DETALLADO (usando trades_final)
+    # ============================================================
+    
+    trades = trades_final
     initial_cap = CONSTANTS["initial_capital"]
-    final_equity = mejor['equity'].iloc[-1]
+    final_equity = equity_curve_final.iloc[-1]
     
     # --- PROCESAMIENTO DE ESTADÍSTICAS ---
     longs = [t for t in trades if t['dir'] == "LONG"]
     shorts = [t for t in trades if t['dir'] == "SHORT"]
-
-    prof_longs  = [t for t in longs  if t['net_pnl'] > 0]
+    
+    prof_longs = [t for t in longs if t['net_pnl'] > 0]
     prof_shorts = [t for t in shorts if t['net_pnl'] > 0]
-
-    pnl_longs  = sum(t['net_pnl'] for t in longs)
+    
+    pnl_longs = sum(t['net_pnl'] for t in longs)
     pnl_shorts = sum(t['net_pnl'] for t in shorts)
-
-    total_ret_pct  = ((final_equity - initial_cap) / initial_cap) * 100
-    long_ret_pct   = (pnl_longs  / initial_cap) * 100
-    short_ret_pct  = (pnl_shorts / initial_cap) * 100
+    
+    total_ret_pct = ((final_equity - initial_cap) / initial_cap) * 100
+    long_ret_pct = (pnl_longs / initial_cap) * 100
+    short_ret_pct = (pnl_shorts / initial_cap) * 100
     win_rate_total = len([t for t in trades if t['net_pnl'] > 0]) / len(trades) * 100 if trades else 0
-    max_dd         = calcular_drawdown_maximo(list(mejor['equity']))
-
+    max_dd = calcular_drawdown_maximo(list(equity_curve_final))
+    
     # Métricas activas en esta corrida
     metricas_activas = []
     if metrics_config.get("use_pf"):       metricas_activas.append(f"PF({metrics_config['peso_pf']:.0f}%)")
     if metrics_config.get("use_winrate"):  metricas_activas.append(f"WinRate({metrics_config['peso_winrate']:.0f}%)")
     if metrics_config.get("use_drawdown"): metricas_activas.append(f"Drawdown({metrics_config['peso_drawdown']:.0f}%)")
-
+    
     print("\n" + "="*50)
     print("         REPORTE DE RENDIMIENTO DETALLADO")
     print("="*50)
     print(f"Símbolo: {symbol} | Timeframe: {timeframe}")
     print(f"Métrica compuesta: {' + '.join(metricas_activas) if metricas_activas else 'PF puro'}")
     print(f"\nRENDIMIENTO TOTAL ESTRATEGIA: {total_ret_pct:+.2f}%")
-    print(f"Profit Factor Final:          {mejor['pf_final']:.2f}")
+    print(f"Profit Factor Final:          {pf_final:.2f}")
     print(f"Win Rate Total:               {win_rate_total:.1f}%")
     print(f"Máximo Drawdown:              {max_dd:.2f}%")
     
@@ -1240,57 +1299,95 @@ def run_optuna_with_gui(values, stop_event=None):
     print(f"\nRENDIMIENTO POR LADO:")
     print(f"  └─ Rendimiento% Longs:  {long_ret_pct:.2f}%")
     print(f"  └─ Rendimiento% Shorts: {short_ret_pct:.2f}%")
-
+    
     print("\n--- MEJORES PARÁMETROS ENCONTRADOS ---")
-    for k, v in mejor['params'].items():
+    for k, v in best_params.items():
         print(f"{k}: {v}")
     print("="*50)
-
-
-    # 8) GUARDAR TRADES EN CSV
-    if trades:
+    
+    # ============================================================
+    # TABLA COMPARATIVA TRAIN vs TEST + FINAL (solo si overfitting activado)
+    # ============================================================
+    if use_oos:
+        print("\n" + "="*65)
+        print("  📊 VALIDACIÓN IS/OOS - COMPARATIVA COMPLETA")
+        print("="*65)
+        print(f"\n{'Métrica':<20} {'TRAIN (70%)':<15} {'TEST (30%)':<15} {'FINAL (100%)':<15}")
+        print("-" * 80)
+        
+        # Profit Factor
+        pf_train_val = mejor_corrida.get('pf_train', 0)
+        pf_test_val = mejor_corrida.get('pf_test', 0)
+        print(f"{'Profit Factor':<20} {pf_train_val:<15.2f} {pf_test_val:<15.2f} {pf_final:<15.2f}")
+        
+        # Win Rate
+        wr_train_val = mejor_corrida.get('winrate_train', 0)
+        wr_test_val = mejor_corrida.get('winrate_test', 0)
+        winrate_final = len([t for t in trades_final if t['net_pnl'] > 0]) / len(trades_final) * 100 if trades_final else 0
+        print(f"{'Win Rate':<20} {wr_train_val:<14.1f}% {wr_test_val:<14.1f}% {winrate_final:<14.1f}%")
+        
+        # Drawdown
+        dd_train_val = mejor_corrida.get('drawdown_train', 0)
+        dd_test_val = mejor_corrida.get('drawdown_test', 0)
+        drawdown_final = calcular_drawdown_maximo(list(equity_curve_final))
+        print(f"{'Drawdown Máx':<20} {dd_train_val:<14.2f}% {dd_test_val:<14.2f}% {drawdown_final:<14.2f}%")
+        
+        # N° Trades
+        trades_train_val = mejor_corrida.get('trades_train', 0)
+        trades_test_val = mejor_corrida.get('trades_test', 0)
+        print(f"{'N° Trades':<20} {trades_train_val:<15} {trades_test_val:<15} {len(trades_final):<15}")
+        
+        print("-" * 80)
+        
+        # Interpretación automática (basada en degradación Train→Test)
+        if pf_train_val > 0:
+            degradacion_pf = (1 - pf_test_val / pf_train_val) * 100
+            if degradacion_pf < 20:
+                print("\n✅ ROBUSTO: La degradación del Profit Factor es aceptable (<20%).")
+            elif degradacion_pf < 40:
+                print("\n⚠️ SOBREAJUSTE MODERADO: La degradación es significativa (20-40%).")
+            else:
+                print("\n❌ SOBREAJUSTE SEVERO: La estrategia no generaliza (>40% degradación).")
+        print("="*65)
+    
+    # ============================================================
+    # 8) GUARDAR TRADES EN CSV (usando trades_final)
+    # ============================================================
+    if trades_final:
         try:
-            df_trades = pd.DataFrame(trades)
-
-            clean_symbol = symbol.replace("/", "").replace(":", "")
-            timestamp = datetime.now().strftime("%Y.%m.%d-%H_%M")
+            df_trades = pd.DataFrame(trades_final)
             
-            # Carpeta destino
+            clean_symbol = symbol.replace("/", "").replace(":", "")
             csv_path = os.path.join(output_dir, f"{timestamp} Trades_csv {clean_symbol}_{timeframe}.csv")
-
+            
             df_trades.to_csv(csv_path, index=False, encoding="utf-8-sig")
-
+            
             print(f"\n[ÉXITO] Archivo de trades generado:")
             print(f"  {csv_path}")
-
+            
         except Exception as e:
             print(f"\n[ERROR] No se pudo guardar el CSV de trades: {e}")
     else:
-        print("\n[INFO] No se generaron trades en la mejor corrida, no se creó el CSV.")
-
-
-
-    # ============================
+        print("\n[INFO] No se generaron trades, no se creó el CSV.")
+    
+    # ============================================================
     # 9) GENERAR SEED JSON
-    # ============================
-
-    # Métricas principales
+    # ============================================================
+    
     metrics = {
-        "profit_factor": mejor.get("pf_final"),
+        "profit_factor": pf_final,
         "winrate": win_rate_total,
         "drawdown": max_dd,
-        "trades": len(trades)
+        "trades": len(trades_final)
     }
-
-    # Archivos generados
+    
     output_files = {
-        "csv": csv_path,
-        "grafico": None,      # se completa luego
-        "preview": None,      # se completa luego
+        "csv": csv_path if trades_final else None,
+        "grafico": None,
+        "preview": None,
         "reporte": ruta_txt
     }
-
-    # Guardar Seed
+    
     guardar_seed(
         values=values,
         config=config,
@@ -1301,17 +1398,15 @@ def run_optuna_with_gui(values, stop_event=None):
         timeframe=timeframe,
         timestamp=timestamp
     )
+    
+    # ============================================================
+    # 10) GRÁFICO INTERACTIVO - Siempre usar datos COMPLETOS
+    # ============================================================
+    html_path = generar_grafico(df_full, trades_final, best_params, symbol, timeframe)
 
 
 
-
-    # 9) GRÁFICO INTERACTIVO
-    html_path = generar_grafico(df_test, trades, mejor['params'], symbol, timeframe)
-    return html_path
-  
-
-
-
+    
 # ============================================================================
 # SECCIÓN 18: GENERACIÓN DE GRÁFICOS (PLOTLY)
 # ============================================================================
