@@ -636,7 +636,7 @@ def make_center_panel():
         # --- Configuración del Activo ---
         [sg.Text("CONFIGURACIÓN DE ACTIVO", font=("Any", 9, "bold"), text_color="#bdbdbd", pad=(0, 2))],
         [sg.Text("Símbolo (ej: SOL/USDT):"), sg.Input(key="symbol", size=(12, 1))],
-        [sg.Text("Timeframe:"), sg.Combo(["1m", "5m", "15m", "1h", "4h", "1D"], key="timeframe", default_value="5m")],
+        [sg.Text("Timeframe:"), sg.Combo(["1m", "5m", "15m", "1h", "4h", "1d"], key="timeframe", default_value="5m")],
         [sg.Text("Cantidad de velas:"), sg.Input(key="candles", size=(10, 1))],
         [
             sg.Button("Verificar velas", key="check_candles", button_color=("white", "#254166")),
@@ -690,9 +690,14 @@ def make_center_panel():
         [sg.Text("─" * 60, font=("Any", 8), text_color="#383838")],
 
         # === 6) BOTONERA ===
+        # ============================================================
+        # BOTONERA PRINCIPAL
+        # ============================================================
         [
-            sg.Button("Ejecutar Optimización", button_color=(COLORS["text_primary"], COLORS["success"]), 
-                    key="run", size=(18, 1)),
+            sg.Button("📊 Optimización Manual", button_color=(COLORS["text_primary"], COLORS["success"]), 
+                    key="run", size=(20, 1)),
+            sg.Button("🚀 Optimización Automática", button_color=(COLORS["text_primary"], "#9b59b6"), 
+                    key="run_auto", size=(22, 1)),
             sg.Button("⏹ Detener", key="stop", button_color=(COLORS["text_primary"], COLORS["danger"]), 
                     disabled=True, size=(14, 1)),
             sg.Button("Reset", key="reset", button_color=(COLORS["text_primary"], COLORS["warning"]), 
@@ -701,34 +706,21 @@ def make_center_panel():
 
         [sg.Text("─" * 60, font=("Any", 8), text_color="#383838")],
 
+        # ============================================================
+        # BOTONERA SECUNDARIA
+        # ============================================================
         [
             sg.Button("Abrir carpeta", key="open_reports", 
                     button_color=(COLORS["text_primary"], COLORS["info"]), size=(14, 1)),
             sg.Button("📈 Ver gráfico", key="ver_grafico", 
                     button_color=(COLORS["text_primary"], COLORS["info"]), disabled=True, size=(14, 1)),
-        ],
-        
-        [sg.Text("─" * 60, font=("Any", 8), text_color="#383838")],
-        
-        [
             sg.Button("Guardar preset", key="save_preset", 
-                    button_color=(COLORS["text_primary"], COLORS["bg_light"]), size=(16, 1)),
+                    button_color=(COLORS["text_primary"], COLORS["bg_light"]), size=(14, 1)),
             sg.Button("Cargar preset", key="load_preset", 
-                    button_color=(COLORS["text_primary"], COLORS["bg_light"]), size=(16, 1)),
+                    button_color=(COLORS["text_primary"], COLORS["bg_light"]), size=(14, 1)),
             sg.Button("Cargar Semilla", key="load_semilla", 
-                    button_color=(COLORS["text_primary"], COLORS["bg_light"]), size=(16, 1)),
+                    button_color=(COLORS["text_primary"], COLORS["bg_light"]), size=(14, 1)),
         ],
-
-        [sg.Text("─" * 60, font=("Any", 8), text_color="#383838")],
-
-
-        [
-            sg.Button("Ejecutar Optimización", button_color=("white","green"), key="run", size=(18, 1)),
-            sg.Button("🚀 Optimización Auto", button_color=("white","#9b59b6"), key="run_auto", size=(18, 1)),  # <--- NUEVO
-            sg.Button("⏹ Detener", key="stop", button_color=("white","gray"), disabled=True, size=(14, 1)),
-        ],
-
-        [sg.Text("─" * 60, font=("Any", 8), text_color="#383838")],
 
 
     ], vertical_alignment="top", expand_x=True, expand_y=True)
@@ -1066,16 +1058,15 @@ def gui_main():
 
         # --- Evento: Fin de la optimización ---
         if event == "-OPT_FINISHED-":
-            # <--- NUEVO: Actualizar indicador de estado según resultado ---
             if _stop_event.is_set():
                 window["status_indicator"].update("⏹️ Cancelado", text_color=COLORS["warning"])
             else:
                 window["status_indicator"].update("✅ Optimización completada", text_color=COLORS["success"])
             
             window['progress'].update(current_count=1.0)
-            window["run"].update(disabled=False, button_color=("white", "green"))
-            window["run_auto"].update(disabled=False, button_color=("white", "#9b59b6"))  # <--- NUEVO
-            window["stop"].update(disabled=True, button_color=("white", "gray"))
+            window["run"].update(disabled=False, button_color=(COLORS["text_primary"], COLORS["success"]))
+            window["run_auto"].update(disabled=False, button_color=(COLORS["text_primary"], "#9b59b6"))
+            window["stop"].update(disabled=True, button_color=(COLORS["text_primary"], COLORS["danger"]))
             if _stop_event.is_set():
                 print("\n[INFO] Optimización cancelada por el usuario.\n")
                 sg.popup("Optimización cancelada.", title="Detenido")
@@ -1254,19 +1245,19 @@ def gui_main():
         
         # --- Evento: Validación de timeframe para acciones (cambio en fuente o timeframe) ---
         if event in ["data_source_crypto", "data_source_yf", "timeframe"]:
-            if values.get("data_source_yf") and values["timeframe"] != "1D":
+            if values.get("data_source_yf") and values["timeframe"] != "1d":
                 respuesta = sg.popup_yes_no(
                     f"⚠️ ADVERTENCIA: Timeframe no recomendado\n\n"
                     f"Seleccionaste Acciones con timeframe {values['timeframe']}.\n\n"
-                    f"Yahoo Finance SOLO es confiable para timeframe DIARIO (1D).\n"
+                    f"Yahoo Finance SOLO es confiable para timeframe DIARIO (1d).\n"
                     f"Para timeframes intradiarios (1m, 5m, 15m, 1h, 4h):\n"
                     f"  • Usa Cripto (Binance) - datos confiables\n\n"
-                    f"¿Deseas cambiar a timeframe 1D?",
+                    f"¿Deseas cambiar a timeframe 1d?",
                     title="⚠️ Datos potencialmente corruptos",
                     keep_on_top=True
                 )
                 if respuesta == "Yes":
-                    window["timeframe"].update("1D")
+                    window["timeframe"].update("1d")
 
         # --- Evento: Botón RESET ---
         if event == "reset":
@@ -1393,9 +1384,10 @@ def gui_main():
                     window[key_on].update(disabled=False)
 
             # Resetear botones
-            window["run"].update(disabled=False, button_color=("white", "green"))
-            window["stop"].update(disabled=True, button_color=("white", "gray"))
-            window["ver_grafico"].update(disabled=True, button_color=("white", "#5a5a8a"))
+            window["run"].update(disabled=False, button_color=(COLORS["text_primary"], COLORS["success"]))
+            window["run_auto"].update(disabled=False, button_color=(COLORS["text_primary"], "#9b59b6"))
+            window["stop"].update(disabled=True, button_color=(COLORS["text_primary"], COLORS["danger"]))
+            window["ver_grafico"].update(disabled=True, button_color=(COLORS["text_primary"], COLORS["info"]))
 
             # <--- NUEVO: Resetear indicador de estado ---
             window["status_indicator"].update("● Sistema listo", text_color=COLORS["success"])
@@ -1426,7 +1418,7 @@ def gui_main():
             symbol_run = values.get("symbol", "").strip()
 
             # Validación de acciones con timeframe no diario
-            if source.startswith("Acciones") and timeframe_run != "1D":
+            if source.startswith("Acciones") and timeframe_run != "1d":
                 respuesta = sg.popup_yes_no(
                     f"⚠️ ADVERTENCIA CRÍTICA\n\n"
                     f"Estás intentando optimizar {symbol_run} (Acciones) con timeframe {timeframe_run}.\n\n"
@@ -1510,8 +1502,9 @@ def gui_main():
 
             # Preparar para la optimización
             _stop_event.clear()
-            window["run"].update(disabled=True, button_color=("white", "gray"))
-            window["stop"].update(disabled=False, button_color=("white", "firebrick"))
+            window["run"].update(disabled=True, button_color=(COLORS["text_primary"], "#888888"))
+            window["run_auto"].update(disabled=True, button_color=(COLORS["text_primary"], "#888888"))
+            window["stop"].update(disabled=False, button_color=(COLORS["text_primary"], COLORS["danger"]))
             window['progress'].update(current_count=0.0)
 
             print("\n" + "━" * 55)
@@ -1534,7 +1527,7 @@ def gui_main():
             symbol_run = values.get("symbol", "").strip()
             
             # Advertencia para acciones con timeframe no diario
-            if source.startswith("Acciones") and timeframe_run != "1D":
+            if source.startswith("Acciones") and timeframe_run != "1d":
                 respuesta = sg.popup_yes_no(
                     f"⚠️ ADVERTENCIA CRÍTICA\n\n"
                     f"Optimización automática con {symbol_run} (Acciones) y timeframe {timeframe_run}.\n\n"
@@ -1574,9 +1567,9 @@ def gui_main():
             
             # Preparar para la optimización
             _stop_event.clear()
-            window["run"].update(disabled=True, button_color=("white", "gray"))
-            window["run_auto"].update(disabled=True, button_color=("white", "gray"))
-            window["stop"].update(disabled=False, button_color=("white", "firebrick"))
+            window["run"].update(disabled=True, button_color=(COLORS["text_primary"], "#888888"))
+            window["run_auto"].update(disabled=True, button_color=(COLORS["text_primary"], "#888888"))
+            window["stop"].update(disabled=False, button_color=(COLORS["text_primary"], COLORS["danger"]))
             window['progress'].update(current_count=0.0)
             
             print("\n" + "━" * 55)
@@ -1606,7 +1599,7 @@ def gui_main():
                 source = values["data_source"]
 
                 # Validación con advertencia para acciones intradiarias
-                if source.startswith("Acciones") and timeframe != "1D":
+                if source.startswith("Acciones") and timeframe != "1d":
                     respuesta = sg.popup_yes_no(
                         f"⚠️ ADVERTENCIA: Datos potencialmente corruptos\n\n"
                         f"Estás verificando {symbol} (Acciones) con timeframe {timeframe}.\n\n"
