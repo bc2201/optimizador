@@ -760,16 +760,15 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
     """Ejecuta la optimización automática multi-fase en hilo separado."""
     try:
         from optimization import ejecutar_optimizacion_automatica
-        from optimizador_main import get_data_efficiently, build_config, FEATURES, CONSTANTS
-        from config_auto_optimizer import CONFIG_FASES, CONFIG_CONVERGENCIA, CONFIG_METRICAS
+        from optimizador_main import get_data_efficiently, build_config
+        from config import CONSTANTS
         
         symbol = values["symbol"].upper().strip()
         timeframe = values["timeframe"]
         total_candles = int(values["candles"])
         
-
         # ============================================================
-        # CONSTRUIR CONFIGURACIÓN DE FASES (COMPLETAMENTE FLEXIBLE)
+        # CONSTRUIR CONFIGURACIÓN DE FASES
         # ============================================================
         
         def get_modo(fase_num, values):
@@ -777,39 +776,26 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
                 return "serie"
             elif values.get(f"auto_fase{fase_num}_modo_paralelo"):
                 return "paralelo"
-            return "serie"  # valor por defecto
+            return "serie"
         
-        
-        # ============================================================
-        # PROCESAR FASE 1 (SIMPLIFICADO)
-        # ============================================================
+        # FASE 1
         fase1_multi_run = values.get("auto_fase1_multi_run", False)
-        fase1_trials = int(values.get("auto_fase1_trials", 2000))  # UN SOLO CAMPO
+        fase1_trials = int(values.get("auto_fase1_trials", 2000))
         fase1_runs = int(values.get("auto_fase1_runs", 1)) if fase1_multi_run else 1
         
-
-        # ============================================================
-        # PROCESAR FASE 2 (SIMPLIFICADO)
-        # ============================================================
+        # FASE 2
         fase2_multi_run = values.get("auto_fase2_multi_run", False)
-        fase2_trials = int(values.get("auto_fase2_trials", 1500))  # UN SOLO CAMPO
+        fase2_trials = int(values.get("auto_fase2_trials", 1500))
         fase2_runs = int(values.get("auto_fase2_runs", 1)) if fase2_multi_run else 1
         
-
-        # ============================================================
-        # PROCESAR FASE 3
-        # ============================================================
+        # FASE 3
         fase3_multi_run = values.get("auto_fase3_multi_run", True)
-        fase3_trials_por_corrida = int(values.get("auto_fase3_trials_por_corrida", 800))
+        fase3_trials_por_corrida = int(values.get("auto_fase3_trials", 800))
         fase3_corridas = int(values.get("auto_fase3_runs", 5)) if fase3_multi_run else 1
-        # Si no está activado multi-run, usar trials normales (campo "Cantidad de trials" de Fase 3)
-        if not fase3_multi_run:
-            fase3_trials_por_corrida = int(values.get("auto_fase3_trials", 800))
         
-
-        # ============================================================
-        # CONSTRUIR DICCIONARIO FINAL DE CONFIGURACIÓN
-        # ============================================================
+        if not fase3_multi_run:
+            fase3_corridas = 1
+        
         config_fases = {
             "fase_1": {
                 "trials": fase1_trials,
@@ -831,38 +817,7 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
             }
         }
         
-
-        # ============================================================
-        # DEBUG: MOSTRAR CONFIGURACIÓN CARGADA
-        # ============================================================
-        print("\n" + "="*60)
-        print("📋 CONFIGURACIÓN DE FASES CARGADA")
-        print("="*60)
-        print(f"\n🔹 FASE 1:")
-        print(f"   • Trials: {config_fases['fase_1']['trials']}")
-        print(f"   • Modo: {config_fases['fase_1']['modo']}")
-        print(f"   • Multi-Run: {'Sí' if config_fases['fase_1']['multi_run'] else 'No'}")
-        if config_fases['fase_1']['multi_run']:
-            print(f"   • Corridas: {config_fases['fase_1']['runs']}")
-        
-        print(f"\n🔹 FASE 2:")
-        print(f"   • Trials: {config_fases['fase_2']['trials']}")
-        print(f"   • Modo: {config_fases['fase_2']['modo']}")
-        print(f"   • Multi-Run: {'Sí' if config_fases['fase_2']['multi_run'] else 'No'}")
-        if config_fases['fase_2']['multi_run']:
-            print(f"   • Corridas: {config_fases['fase_2']['runs']}")
-        
-        print(f"\n🔹 FASE 3:")
-        print(f"   • Trials por corrida: {config_fases['fase_3']['trials_por_corrida']}")
-        print(f"   • Modo: {config_fases['fase_3']['modo']}")
-        print(f"   • Multi-Run: {'Sí' if config_fases['fase_3']['multi_run'] else 'No'}")
-        if config_fases['fase_3']['multi_run']:
-            print(f"   • Corridas: {config_fases['fase_3']['corridas']}")
-        print("="*60 + "\n")
-        
-
-
-        # Configuración de Convergencia
+        # CONFIGURACIÓN DE CONVERGENCIA
         config_convergencia = {
             "activar": values.get("auto_activar_convergencia", True),
             "ventana": int(values.get("auto_ventana", 75)),
@@ -871,7 +826,7 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
             "mejor_score_minimo": float(values.get("auto_mejor_score_minimo", 0.85))
         }
         
-        # Configuración de Métricas por Fase
+        # CONFIGURACIÓN DE MÉTRICAS POR FASE
         def parse_float(val, default):
             try:
                 return float(val) if val else default
@@ -880,35 +835,35 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
         
         config_metricas = {
             "fase_1": {
-                "use_pf": values.get("auto_fase1_use_pf", True),
+                "use_pf": True,
                 "peso_pf": parse_float(values.get("auto_fase1_pf"), 60.0),
-                "use_winrate": values.get("auto_fase1_use_winrate", True),
+                "use_winrate": True,
                 "peso_winrate": parse_float(values.get("auto_fase1_winrate"), 40.0),
-                "use_drawdown": values.get("auto_fase1_use_drawdown", False),
+                "use_drawdown": False,
                 "peso_drawdown": parse_float(values.get("auto_fase1_drawdown"), 0.0),
-                "use_n_trades": values.get("auto_fase1_use_n_trades", False),
+                "use_n_trades": False,
                 "peso_n_trades": parse_float(values.get("auto_fase1_n_trades"), 0.0),
                 "min_trades": int(values.get("auto_fase1_min_trades", 15))
             },
             "fase_2": {
-                "use_pf": values.get("auto_fase2_use_pf", True),
+                "use_pf": True,
                 "peso_pf": parse_float(values.get("auto_fase2_pf"), 40.0),
-                "use_winrate": values.get("auto_fase2_use_winrate", True),
+                "use_winrate": True,
                 "peso_winrate": parse_float(values.get("auto_fase2_winrate"), 30.0),
-                "use_drawdown": values.get("auto_fase2_use_drawdown", True),
+                "use_drawdown": True,
                 "peso_drawdown": parse_float(values.get("auto_fase2_drawdown"), 20.0),
-                "use_n_trades": values.get("auto_fase2_use_n_trades", True),
+                "use_n_trades": True,
                 "peso_n_trades": parse_float(values.get("auto_fase2_n_trades"), 10.0),
                 "min_trades": int(values.get("auto_fase2_min_trades", 20))
             },
             "fase_3": {
-                "use_pf": values.get("auto_fase3_use_pf", True),
+                "use_pf": True,
                 "peso_pf": parse_float(values.get("auto_fase3_pf"), 35.0),
-                "use_winrate": values.get("auto_fase3_use_winrate", True),
+                "use_winrate": True,
                 "peso_winrate": parse_float(values.get("auto_fase3_winrate"), 30.0),
-                "use_drawdown": values.get("auto_fase3_use_drawdown", True),
+                "use_drawdown": True,
                 "peso_drawdown": parse_float(values.get("auto_fase3_drawdown"), 35.0),
-                "use_n_trades": values.get("auto_fase3_use_n_trades", False),
+                "use_n_trades": False,
                 "peso_n_trades": parse_float(values.get("auto_fase3_n_trades"), 0.0),
                 "min_trades": int(values.get("auto_fase3_min_trades", 30))
             }
@@ -926,6 +881,23 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
         df_full = df_full.dropna().copy()
         print(f"[INFO] Datos descargados: {len(df_full)} velas")
         
+        # ============================================================
+        # DIVIDIR DATOS EN TRAIN Y TEST (usando % del GUI)
+        # ============================================================
+        # Leer porcentaje desde el GUI (default 70%)
+        try:
+            train_pct = float(values.get("oos_train_pct", 70))
+            train_pct = max(50, min(90, train_pct))  # Limitar entre 50% y 90%
+        except:
+            train_pct = 70
+        
+        split_idx = int(len(df_full) * train_pct / 100)
+        df_train = df_full.iloc[:split_idx].copy()
+        df_test = df_full.iloc[split_idx:].copy()
+        
+        print(f"[INFO] Train: {len(df_train)} velas ({train_pct:.0f}%)")
+        print(f"[INFO] Test: {len(df_test)} velas ({100-train_pct:.0f}%)")
+        
         # Construir configuración base
         config = build_config(values)
         if config is None:
@@ -934,39 +906,55 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
             return
         
         # Construir features
-        features = {key: values[key] if key in values else FEATURES[key] for key in FEATURES}
+        DEFAULT_FEATURES = {
+            "use_rsi_long": False,
+            "use_rsi_short": False,
+            "use_adx_filter": False,
+            "enable_high_condition": True,
+            "enable_low_condition": True,
+            "use_validation_window": True,
+            "use_htf_filter": False,
+            "use_stop_loss": False,
+            "activar_stop_be": False,
+            "use_take_profit_long": False,
+            "use_take_profit_short": False,
+            "enable_cooldown": False,
+            "enable_reentry": False,
+            "enable_post_crossover_entry": False,
+            "enable_long_trades": values.get("enable_long_trades", True),
+            "enable_short_trades": values.get("enable_short_trades", True),
+        }
+        
+        features = {key: values[key] if key in values else DEFAULT_FEATURES.get(key, False) 
+                    for key in DEFAULT_FEATURES}
         
         # Mapear Auto features
         AUTO_MAP = {
-            "use_rsi_long": "auto_rsi_long", "use_rsi_short": "auto_rsi_short",
-            "use_adx_filter": "auto_adx_filter", "enable_high_condition": "auto_high_condition",
-            "enable_low_condition": "auto_low_condition", "use_htf_filter": "auto_htf_filter",
-            "use_stop_loss": "auto_stop_loss", "activar_stop_be": "auto_stop_be",
-            "use_take_profit_long": "auto_tp_long", "use_take_profit_short": "auto_tp_short",
-            "enable_cooldown": "auto_cooldown", "enable_reentry": "auto_reentry",
+            "use_rsi_long": "auto_rsi_long",
+            "use_rsi_short": "auto_rsi_short",
+            "use_adx_filter": "auto_adx_filter",
+            "enable_high_condition": "auto_high_condition",
+            "enable_low_condition": "auto_low_condition",
+            "use_htf_filter": "auto_htf_filter",
+            "use_stop_loss": "auto_stop_loss",
+            "activar_stop_be": "auto_stop_be",
+            "use_take_profit_long": "auto_tp_long",
+            "use_take_profit_short": "auto_tp_short",
+            "enable_cooldown": "auto_cooldown",
+            "enable_reentry": "auto_reentry",
             "enable_post_crossover_entry": "auto_post_crossover",
         }
         for feat_key, auto_key in AUTO_MAP.items():
             if values.get(auto_key, False):
                 features[feat_key] = "auto"
         
-        # Mostrar configuración utilizada
-        print("\n" + "="*60)
-        print("⚙️ CONFIGURACIÓN DE OPTIMIZACIÓN AUTOMÁTICA")
-        print("="*60)
-        print(f"\n📊 Convergencia: {'Activada' if config_convergencia['activar'] else 'Desactivada'}")
-        if config_convergencia['activar']:
-            print(f"   • Ventana: {config_convergencia['ventana']} trials")
-            print(f"   • Tolerancia: {config_convergencia['tolerancia']*100:.1f}%")
-            print(f"   • Trials mínimos: {config_convergencia['trials_minimos']}")
-        print(f"\n📈 Fase 1: {config_fases['fase_1']['trials']} trials ({config_fases['fase_1']['modo']})")
-        print(f"📈 Fase 2: {config_fases['fase_2']['trials']} trials ({config_fases['fase_2']['modo']})")
-        print(f"📈 Fase 3: {config_fases['fase_3']['corridas']} corridas de {config_fases['fase_3']['trials_por_corrida']} trials")
-        print("="*60 + "\n")
-        
-        # Ejecutar optimización automática con la configuración del GUI
+        # ============================================================
+        # LLAMADA CORREGIDA - PASANDO df_train, df_test Y CONSTANTS
+        # ============================================================
         resultado = ejecutar_optimizacion_automatica(
             df=df_full,
+            df_train=df_train,
+            df_test=df_test,
             config_base=config,
             features=features,
             symbol=symbol,
@@ -974,14 +962,16 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
             config_fases=config_fases,
             config_convergencia=config_convergencia,
             config_metricas=config_metricas,
+            constants=CONSTANTS,
             gui_values=values,
             verbose=True
         )
         
         print(f"\n[ÉXITO] Optimización automática completada")
-        print(f"  Mejor score: {resultado['best_score']:.4f}")
-        if 'estabilidad' in resultado:
-            print(f"  Estabilidad: {resultado['estabilidad']:.1%}")
+        if resultado:
+            print(f"  Mejor score: {resultado.get('best_score', 0):.4f}")
+            if 'estabilidad' in resultado:
+                print(f"  Estabilidad: {resultado['estabilidad']:.1%}")
         
         window.write_event_value("-OPT_FINISHED-", None)
         

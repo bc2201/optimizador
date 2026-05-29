@@ -19,6 +19,7 @@ Uso:
 import numpy as np
 import threading
 from optimizador_main import run_single_optuna, run_backtest
+from backtest import calcular_drawdown_maximo 
 
 
 class OptimizadorAutomatico:
@@ -33,23 +34,20 @@ class OptimizadorAutomatico:
     def __init__(self, df, config_base, features, symbol, timeframe, 
             config_fases=None, config_convergencia=None, 
             config_metricas=None, gui_values=None, 
-            df_train=None, df_test=None, verbose=True):
+            df_train=None, df_test=None, constants=None, verbose=True):
         """
         Args:
-            df: DataFrame con datos históricos
-            config_base: Configuración base de rangos   
-            features: Features de la estrategia
-            symbol: Símbolo del activo (para logs)
-            timeframe: Timeframe (para logs)
-            config_fases: Configuración de trials y modos (opcional)
-            config_convergencia: Configuración de convergencia (opcional)
-            config_metricas: Configuración de métricas por fase (opcional)
-            verbose: Mostrar logs detallados
+            df: DataFrame con datos históricos completos
+            df_train: DataFrame para entrenamiento (IS) - opcional
+            df_test: DataFrame para validación (OOS) - opcional
+            constants: Constantes de configuración
+            ... otros args ...
         """
 
         self.df_train = df_train if df_train is not None else df
         self.df_test = df_test if df_test is not None else df
-        self.gui_values = gui_values if gui_values else {}  # <--- NUEVO
+        self.constants = constants if constants else {}
+        self.gui_values = gui_values if gui_values else {}
         self.df = df
         self.config_base = config_base.copy()
         self.features = features
@@ -453,7 +451,7 @@ class OptimizadorAutomatico:
                 self.df_train,
                 **cleaned_params,
                 **cleaned_features,
-                **CONSTANTS
+                **self.constants
             )
             
             # Calcular métricas de TRAIN
@@ -466,7 +464,7 @@ class OptimizadorAutomatico:
                 self.df_test,
                 **cleaned_params,
                 **cleaned_features,
-                **CONSTANTS
+                **self.constants
             )
             
             # Calcular métricas de TEST
@@ -1160,26 +1158,23 @@ class OptimizadorAutomatico:
 
 def ejecutar_optimizacion_automatica(df, config_base, features, symbol, timeframe, 
     config_fases=None, config_convergencia=None,
-    config_metricas=None, gui_values=None, verbose=True):
+    config_metricas=None, gui_values=None, 
+    df_train=None, df_test=None, constants=None, verbose=True):
     """
     Función de alto nivel para ejecutar la optimización automática.
     
     Args:
-        df: DataFrame con datos históricos
-        config_base: Configuración base de rangos
-        features: Features de la estrategia
-        symbol: Símbolo del activo
-        timeframe: Timeframe
-        config_fases: Configuración de trials y modos (opcional)
-        config_convergencia: Configuración de convergencia (opcional)
-        config_metricas: Configuración de métricas por fase (opcional)
-        verbose: Mostrar logs
-    
-    Returns:
-        dict: Resultados finales
+        df: DataFrame con datos históricos completos
+        df_train: DataFrame para entrenamiento (opcional)
+        df_test: DataFrame para validación (opcional)
+        constants: Constantes de configuración (comisión, capital, etc.)
+        ... otros args ...
     """
     optimizador = OptimizadorAutomatico(
         df=df,
+        df_train=df_train,
+        df_test=df_test,
+        constants=constants,
         config_base=config_base,
         features=features,
         symbol=symbol,
@@ -1187,7 +1182,7 @@ def ejecutar_optimizacion_automatica(df, config_base, features, symbol, timefram
         config_fases=config_fases,
         config_convergencia=config_convergencia,
         config_metricas=config_metricas,
-        gui_values=gui_values,  # <--- NUEVO
+        gui_values=gui_values,
         verbose=verbose
     )
     
