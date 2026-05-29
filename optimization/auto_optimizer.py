@@ -1072,7 +1072,7 @@ class OptimizadorAutomatico:
         # OBTENER TRADES Y EQUITY DEL BACKTEST FINAL
         # ============================================================
         from optimizador_main import run_backtest
-        from config import CONSTANTS
+        #from config import CONSTANTS
         
         # Limpiar features (quitar "auto")
         cleaned_features = {k: v for k, v in self.features.items() if v != "auto"}
@@ -1109,7 +1109,7 @@ class OptimizadorAutomatico:
             self.df,  # Datos completos
             **cleaned_params,
             **cleaned_features,
-            **CONSTANTS
+            **self.constants
         )
         
         self._log("\n" + "="*60)
