@@ -608,14 +608,15 @@ def make_left_panel():
 
 def make_center_panel():
     """Construye el panel central con configuración de activo y controles principales."""
-    return sg.Column([
+    
+    layout = [
         # --- Fuente de datos (Cripto vs Acciones) ---
         [sg.Text("FUENTE DE DATOS", font=("Any", 9, "bold"), text_color="#bdbdbd", pad=(0, 2))],
         [
             sg.Radio("Cripto (Binance)", group_id="fuente_grupo", key="data_source_crypto", 
-                     default=True, font=("Any", 10)),
+                    default=True, font=("Any", 10)),
             sg.Radio("Acciones (Yahoo Finance)", group_id="fuente_grupo", key="data_source_yf", 
-                     font=("Any", 10))
+                    font=("Any", 10))
         ],
         
         # Después de los radios de fuente de datos
@@ -670,7 +671,7 @@ def make_center_panel():
             sg.Text("Cantidad de corridas:"), sg.Input("1", key="multi_runs_count", size=(6, 1)),
             sg.Text("Cantidad de trials:"), sg.Input(key="trials", size=(10, 1)),
             sg.Button("💡 Calcular", key="calcular_trials", button_color=("white", "#254166"),
-                      tooltip="Analiza el espacio de búsqueda y sugiere un rango de trials")
+                    tooltip="Analiza el espacio de búsqueda y sugiere un rango de trials")
         ],
         [sg.Text("─" * 60, font=("Any", 8), text_color="#383838")],
 
@@ -680,10 +681,7 @@ def make_center_panel():
         [sg.Text("% Datos Entrenamiento:"), sg.Input("70", key="oos_train_pct", size=(5, 1))],
         [sg.Text("─" * 60, font=("Any", 8), text_color="#383838")],
 
-        # === 6) BOTONERA ===
-        # ============================================================
-        # BOTONERA PRINCIPAL
-        # ============================================================
+        # === BOTONERA PRINCIPAL ===
         [
             sg.Button("📊 Optimización Manual", button_color=(COLORS["text_primary"], COLORS["success"]), 
                     key="run", size=(20, 1)),
@@ -697,9 +695,7 @@ def make_center_panel():
 
         [sg.Text("─" * 60, font=("Any", 8), text_color="#383838")],
 
-        # ============================================================
-        # BOTONERA SECUNDARIA
-        # ============================================================
+        # === BOTONERA SECUNDARIA ===
         [
             sg.Button("Abrir carpeta", key="open_reports", 
                     button_color=(COLORS["text_primary"], COLORS["info"]), size=(14, 1)),
@@ -712,9 +708,17 @@ def make_center_panel():
             sg.Button("Cargar Semilla", key="load_semilla", 
                     button_color=(COLORS["text_primary"], COLORS["bg_light"]), size=(14, 1)),
         ],
+    ]
 
-
-    ], vertical_alignment="top", expand_x=True, expand_y=True)
+    return sg.Column(
+        layout,
+        key="center_panel",
+        pad=(4, 4),
+        expand_x=True,
+        expand_y=True,
+        scrollable=True,           # Scroll para pantallas pequeñas
+        vertical_scroll_only=True  # Solo scroll vertical
+    )
 
 
 
