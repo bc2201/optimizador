@@ -1,0 +1,167 @@
+=============================================================================
+🚀 OPTIMIZACIÓN MANUAL		|	Reporte de Optimización
+=============================================================================
+
+-----------------------------------------------------------------------------
+📅 Fecha: 28/05/2026 21:32	-	🔧 Versión optimizador: 16
+-----------------------------------------------------------------------------
+
+📊 Activo: SOL/USDT	⏱️ Timeframe: 15m	📈 Velas: 2000
+
+
+----------------------------------------------------------------------
+Estadísticas del mejor setup encontrado
+----------------------------------------------------------------------
+Rendimiento total	= +2.70 % 	| Total de operaciones = 46
+
+Profit Factor final 	= 1.66
+Win Rate total		= 45.65 %
+Drawdown		= 0.63 %
+
+Longs (total)	= 18	| Longs ganadores   =	9	| Rendimiento longs  = +0.85 %
+Shorts (total)	= 28	| Shorts ganadores  = 	12	| Rendimiento shorts = +1.85 %
+
+
+📊 Estadísticas de Validación:
+
+
+=============================================================================
+CONFIGURACIÓN INICIAL
+=============================================================================
+
+| Medias móviles	 |
++------------------+-----+
+| EMA		   | ON  |
+| SMA		   | ON  |
+| WMA		   | OFF |
+| HMA		   | OFF |
+| DEMA		   | OFF |
+| MA1 -min	   | 10  |
+| MA1 -max	   | 30  |
+| MA2 -min	   | 20  |
+| MA2 -max	   | 50  |
++------------------+-----+
+
+| Dirección de Trades    |
++------------------+-----+
+| Habilitar Longs  | ON  |
+| Habilitar Shorts | ON  |
++------------------+-----+
+
+| Optuna                                    |
++----------------------+--------------------+
+| Modo                 | Exploración Rápida |
+| Ejecución            | Paralelo           |
+| Multi-Run            | OFF                |
+| Cantidad de Corridas | 1                  |
+| Cantidad de Trials   | 700                |
++----------------------+--------------------+
+
+| Prevención de Overfitting  |
++-----------------------+----+
+| Validación IS/OOS     | ON  |
+| % Datos Entrenamiento | 70  |
++-----------------------+----+
+
+| Métricas de Optimización (Métrica - On-Off - Peso)|
++------------------+-----+-----+
+| Profit Factor    | ON  |  50% |
+| Win Rate         | ON  |  30% |
+| Max Drawdown     | ON  |  20% |
+| N° de Trades     | OFF |   0% |
+| Mínimo de trades |     |  30 |
++------------------+-----+-----+
+
+====================================================================================================
+			PRESET INICIAL vs FINAL
+====================================================================================================
+
+| Medias móviles	 |
++------------------+-----+
+| MA1 -tipo	   | SMA |
+| MA1 -longitud	   | 16  |
+| MA2 -tipo	   | SMA |
+| MA2 -longitud	   | 20  |
++------------------+-----+
+
+| Tendencia (RSI)                                                |
++-----------------+------------------------------+---------------+
+| RSI Long        | AUTO                         | Optuna: True  |
+| RSI Short       | AUTO                         | Optuna: False |
+| RSI Length      | AUTO (min: 8 | max: 18    ) | 13            |
+| RSI min (Long)  | AUTO (min: 55.0 | max: 65.0) | 55.9          |
+| RSI max (Short) | AUTO (min: 35.0 | max: 45.0) | N/A           |
++-----------------+------------------------------+---------------+
+
+| ADX                                                 |
++------------+------------------------------+---------+
+| ADX        | ON                           | Fijo ON |
+| ADX Length | AUTO (min: 8 | max: 18    ) | 13      |
+| ADX Umbral | AUTO (min: 15.0 | max: 25.0) | 21.0    |
++------------+------------------------------+---------+
+
+| Condiciones de Precio                                  |
++--------------------+-------------------------+---------+
+| High Condition     | ON                      | Fijo ON |
+| Low Condition      | ON                      | Fijo ON |
+| Lookback           | AUTO (min: 2 | max: 10    ) | 7       |
+| Validation Window  | AUTO                    | 11      |
+| Range (Val Window) | AUTO (min: 5 | max: 15    ) | 11      |
++--------------------+-------------------------+---------+
+
+| HTF Filter                                       |
++------------+--------------------------+----------+
+| HTF Filter | OFF                      | Fijo OFF |
+| Timeframe  | N/A                      | N/A      |
+| MA Type    | N/A                      | N/A      |
+| HTF Length | AUTO (min: 10 | max: 60   ) | N/A      |
++------------+--------------------------+----------+
+
+| Gestión de Riesgo                                                   |
++-------------------+----------------------------+--------------------+
+| Stop Loss         | ON                         | Fijo ON            |
+| SL %              | AUTO (min: 0.3 | max: 2.0 ) | 1.7000000000000002 |
+| Break Even        | OFF                        | Fijo OFF           |
+| Velas para BE     | AUTO (min: 1 | max: 10    ) | N/A                |
+| Take Profit Long  | AUTO                       | Optuna: True       |
+| TP long %         | AUTO (min: 0.5 | max: 4.0 ) | 0.9                |
+| Take Profit Short | AUTO                       | Optuna: True       |
+| TP short %        | AUTO (min: 0.5 | max: 4.0 ) | 3.2                |
++-------------------+----------------------------+--------------------+
+
+| Gestión Operaciones                                         |
++----------------------+---------------------------+----------+
+| Cooldown             | OFF                       | Fijo OFF |
+| Max Losing streak    | AUTO (min: 1 | max: 4     ) | N/A      |
+| Cooldown bars        | AUTO (min: 10 | max: 300  ) | N/A      |
+| Reentry              | OFF                       | Fijo OFF |
+| Max reentries        | AUTO (min: 1 | max: 4     ) | N/A      |
+| Post Crossover Entry | OFF                       | Fijo OFF |
+| Max post reentries   | AUTO (min: 1 | max: 4     ) | N/A      |
++----------------------+---------------------------+----------+
+
+====================================================================================================
+			ESPACIO DE BÚSQUEDA
+====================================================================================================
+
+Dimensiones totales 	= N/A
+Complejidad estimada	= N/A
+Tamaño estimado		= N/A
+Trials recomendados	= N/A
+Trials usados		= 700
+
+
+====================================================================================================
+  📊 VALIDACIÓN IS/OOS - COMPARATIVA TRAIN vs TEST vs FINAL
+====================================================================================================
+
+Métrica              TRAIN (70%)        TEST (30%)         FINAL (100%)      
+--------------------------------------------------------------------------------
+Profit Factor        1.53               1.81               1.66              
+Win Rate             45.2             % 42.9             % 45.7             %
+Drawdown Máx         0.63             % 0.60             % 0.63             %
+N° Trades            31                 14                 46                
+--------------------------------------------------------------------------------
+
+✅ ROBUSTO: La degradación del Profit Factor es aceptable (<20%).
+====================================================================================================

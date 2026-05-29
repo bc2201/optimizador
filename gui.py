@@ -352,6 +352,9 @@ def make_auto_config_panel():
         # Función para crear una sección de configuración de fase (estilo manual)
         # Función para crear una sección de configuración de fase (estilo manual exacto)
         # Función para crear una sección de configuración de fase (estilo manual compacto)
+
+
+
     def make_fase_config(fase_num, nombre, default_trials, default_modo, default_multi_run, default_runs):
         """Crea un frame completo para una fase con el estilo exacto del modo manual"""
         
@@ -361,16 +364,12 @@ def make_auto_config_panel():
         multi_run_key = f"auto_fase{fase_num}_multi_run"
         runs_key = f"auto_fase{fase_num}_runs"
         runs_label_key = f"auto_fase{fase_num}_runs_label"
-        runs_input_key = f"auto_fase{fase_num}_runs_input"
-        trials_por_corrida_key = f"auto_fase{fase_num}_trials_por_corrida"
         
         layout = []
         
-
         # Título de la fase
         layout.append([sg.Text(f"Fase {fase_num} - {nombre}", font=("Any", 9, "bold"), text_color="#bdbdbd")])
         
-
         # Fila 1: Modo de ejecución (Radio buttons)
         layout.append([
             sg.Text("Modo de ejecución:", size=(14, 1)),
@@ -380,7 +379,6 @@ def make_auto_config_panel():
                     default=(default_modo == "Paralelo"), enable_events=True),
         ])
         
-
         # Fila 2: Multi-Run + Cantidad de corridas (con visibilidad controlada)
         layout.append([
             cb("Multi-Run", multi_run_key, default=default_multi_run),
@@ -388,18 +386,11 @@ def make_auto_config_panel():
             sg.Input(str(default_runs), key=runs_key, size=(6, 1), visible=default_multi_run),
         ])
         
-
-        # Fila 3: Cantidad de trials (o Trials por corrida para Fase 3)
-        if fase_num == 3:
-            layout.append([
-                sg.Text("Trials por corrida:", size=(15, 1)),
-                sg.Input(str(default_trials), key=trials_por_corrida_key, size=(10, 1)),
-            ])
-        else:
-            layout.append([
-                sg.Text("Cantidad de trials:", size=(15, 1)),
-                sg.Input(str(default_trials), key=trials_key, size=(10, 1)),
-            ])
+        # Fila 3: Cantidad de trials (siempre visible, un solo campo)
+        layout.append([
+            sg.Text("Cantidad de trials:", size=(15, 1)),
+            sg.Input(str(default_trials), key=trials_key, size=(10, 1)),
+        ])
         
         return sg.Frame("", layout, pad=(5, 3), border_width=1, relief=sg.RELIEF_SUNKEN)
     
@@ -776,8 +767,9 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
         timeframe = values["timeframe"]
         total_candles = int(values["candles"])
         
+
         # ============================================================
-        # CONSTRUIR CONFIGURACIÓN DESDE EL GUI
+        # CONSTRUIR CONFIGURACIÓN DE FASES (COMPLETAMENTE FLEXIBLE)
         # ============================================================
         
         def get_modo(fase_num, values):
@@ -785,29 +777,91 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
                 return "serie"
             elif values.get(f"auto_fase{fase_num}_modo_paralelo"):
                 return "paralelo"
-            return "serie"
+            return "serie"  # valor por defecto
+        
+        
+        # ============================================================
+        # PROCESAR FASE 1 (SIMPLIFICADO)
+        # ============================================================
+        fase1_multi_run = values.get("auto_fase1_multi_run", False)
+        fase1_trials = int(values.get("auto_fase1_trials", 2000))  # UN SOLO CAMPO
+        fase1_runs = int(values.get("auto_fase1_runs", 1)) if fase1_multi_run else 1
+        
 
+        # ============================================================
+        # PROCESAR FASE 2 (SIMPLIFICADO)
+        # ============================================================
+        fase2_multi_run = values.get("auto_fase2_multi_run", False)
+        fase2_trials = int(values.get("auto_fase2_trials", 1500))  # UN SOLO CAMPO
+        fase2_runs = int(values.get("auto_fase2_runs", 1)) if fase2_multi_run else 1
+        
+
+        # ============================================================
+        # PROCESAR FASE 3
+        # ============================================================
+        fase3_multi_run = values.get("auto_fase3_multi_run", True)
+        fase3_trials_por_corrida = int(values.get("auto_fase3_trials_por_corrida", 800))
+        fase3_corridas = int(values.get("auto_fase3_runs", 5)) if fase3_multi_run else 1
+        # Si no está activado multi-run, usar trials normales (campo "Cantidad de trials" de Fase 3)
+        if not fase3_multi_run:
+            fase3_trials_por_corrida = int(values.get("auto_fase3_trials", 800))
+        
+
+        # ============================================================
+        # CONSTRUIR DICCIONARIO FINAL DE CONFIGURACIÓN
+        # ============================================================
         config_fases = {
             "fase_1": {
-                "trials": int(values.get("auto_fase1_trials", 2000)),
+                "trials": fase1_trials,
                 "modo": get_modo(1, values),
-                "multi_run": values.get("auto_fase1_multi_run", False),
-                "runs": int(values.get("auto_fase1_runs", 1))
+                "multi_run": fase1_multi_run,
+                "runs": fase1_runs
             },
             "fase_2": {
-                "trials": int(values.get("auto_fase2_trials", 1500)),
+                "trials": fase2_trials,
                 "modo": get_modo(2, values),
-                "multi_run": values.get("auto_fase2_multi_run", False),
-                "runs": int(values.get("auto_fase2_runs", 1))
+                "multi_run": fase2_multi_run,
+                "runs": fase2_runs
             },
             "fase_3": {
-                "trials_por_corrida": int(values.get("auto_fase3_trials_x_corrida", 800)),
+                "trials_por_corrida": fase3_trials_por_corrida,
                 "modo": get_modo(3, values),
-                "multi_run": values.get("auto_fase3_multi_run", True),
-                "corridas": int(values.get("auto_fase3_runs", 5))
+                "multi_run": fase3_multi_run,
+                "corridas": fase3_corridas
             }
         }
         
+
+        # ============================================================
+        # DEBUG: MOSTRAR CONFIGURACIÓN CARGADA
+        # ============================================================
+        print("\n" + "="*60)
+        print("📋 CONFIGURACIÓN DE FASES CARGADA")
+        print("="*60)
+        print(f"\n🔹 FASE 1:")
+        print(f"   • Trials: {config_fases['fase_1']['trials']}")
+        print(f"   • Modo: {config_fases['fase_1']['modo']}")
+        print(f"   • Multi-Run: {'Sí' if config_fases['fase_1']['multi_run'] else 'No'}")
+        if config_fases['fase_1']['multi_run']:
+            print(f"   • Corridas: {config_fases['fase_1']['runs']}")
+        
+        print(f"\n🔹 FASE 2:")
+        print(f"   • Trials: {config_fases['fase_2']['trials']}")
+        print(f"   • Modo: {config_fases['fase_2']['modo']}")
+        print(f"   • Multi-Run: {'Sí' if config_fases['fase_2']['multi_run'] else 'No'}")
+        if config_fases['fase_2']['multi_run']:
+            print(f"   • Corridas: {config_fases['fase_2']['runs']}")
+        
+        print(f"\n🔹 FASE 3:")
+        print(f"   • Trials por corrida: {config_fases['fase_3']['trials_por_corrida']}")
+        print(f"   • Modo: {config_fases['fase_3']['modo']}")
+        print(f"   • Multi-Run: {'Sí' if config_fases['fase_3']['multi_run'] else 'No'}")
+        if config_fases['fase_3']['multi_run']:
+            print(f"   • Corridas: {config_fases['fase_3']['corridas']}")
+        print("="*60 + "\n")
+        
+
+
         # Configuración de Convergencia
         config_convergencia = {
             "activar": values.get("auto_activar_convergencia", True),
@@ -920,6 +974,7 @@ def optimization_thread_wrapper_auto(window, values, stop_event):
             config_fases=config_fases,
             config_convergencia=config_convergencia,
             config_metricas=config_metricas,
+            gui_values=values,
             verbose=True
         )
         
@@ -1234,10 +1289,11 @@ def gui_main():
                 fase = 3
             
             visible = values[event]
+            
             # Mostrar/ocultar label e input de corridas
             try:
                 window[f"auto_fase{fase}_runs_label"].update(visible=visible)
-                window[f"auto_fase{fase}_runs"].update(visible=visible)  # ← usar runs_key, no runs_input
+                window[f"auto_fase{fase}_runs"].update(visible=visible)
             except Exception as e:
                 print(f"Error al actualizar visibilidad: {e}")
         
@@ -1388,6 +1444,44 @@ def gui_main():
             window["run_auto"].update(disabled=False, button_color=(COLORS["text_primary"], "#9b59b6"))
             window["stop"].update(disabled=True, button_color=(COLORS["text_primary"], COLORS["danger"]))
             window["ver_grafico"].update(disabled=True, button_color=(COLORS["text_primary"], COLORS["info"]))
+
+
+
+
+            # ============================================================
+            # NUEVO: CARGAR VALORES POR DEFECTO DE OPTIMIZACIÓN AUTOMÁTICA
+            # ============================================================
+            from config_auto_optimizer import DEFAULTS_AUTO
+            
+            for key, val in DEFAULTS_AUTO.items():
+                if key in window.key_dict:
+                    window[key].update(val)
+            
+            # También asegurar que la visibilidad de los campos de corridas
+            # se actualice según los valores por defecto de Multi-Run
+            for fase in [1, 2, 3]:
+                multi_run_key = f"auto_fase{fase}_multi_run"
+                runs_label_key = f"auto_fase{fase}_runs_label"
+                runs_key = f"auto_fase{fase}_runs"
+                
+                # Obtener el valor por defecto de Multi-Run para esta fase
+                default_multi_run = DEFAULTS_AUTO.get(multi_run_key, False)
+                
+                if default_multi_run:
+                    window[runs_label_key].update(visible=True)
+                    window[runs_key].update(visible=True)
+                else:
+                    window[runs_label_key].update(visible=False)
+                    window[runs_key].update(visible=False)
+
+            # Resetear indicador de estado
+            window["status_indicator"].update("● Sistema listo", text_color=COLORS["success"])
+
+            # Limpiar output
+            window["output"].update("")
+
+
+
 
             # <--- NUEVO: Resetear indicador de estado ---
             window["status_indicator"].update("● Sistema listo", text_color=COLORS["success"])
@@ -1713,6 +1807,8 @@ def gui_main():
             # <--- NUEVO: Restaurar estado ---
             window["status_indicator"].update("● Sistema listo", text_color=COLORS["success"])
 
+        
+        
         # --- Evento: Cargar Semilla ---
         if event == "load_semilla":
             ruta = sg.popup_get_file(
@@ -1725,31 +1821,59 @@ def gui_main():
                     with open(ruta, "r", encoding="utf-8") as f:
                         semilla = json.load(f)
 
+                    # ============================================================
+                    # 1. Restaurar TODOS los valores del GUI desde 'gui_values'
+                    # ============================================================
                     gui_vals = semilla.get("gui_values", {})
                     for k, v in gui_vals.items():
                         if k in window.key_dict:
                             window[k].update(v)
 
-                    window["symbol"].update(semilla.get("symbol", ""))
-                    window["timeframe"].update(semilla.get("timeframe", ""))
+                    # ============================================================
+                    # 2. Forzar actualización de la interfaz dinámica
+                    # ============================================================
+                    # Esto actualiza la visibilidad de paneles (col_rsi, col_adx, etc.)
+                    window.write_event_value("preset_loaded", gui_vals)
+                    
+                    # Actualizar el modo de Optuna (esto dispara la configuración de trials, multi-run, etc.)
+                    modo_opt = gui_vals.get("modo_opt", "Exploración Rápida")
+                    window.write_event_value("modo_opt", modo_opt)
 
-                    opt = semilla.get("optuna_settings", {})
-                    if "trials" in opt:
-                        window["trials"].update(opt["trials"])
-                    if "multi_run" in opt:
-                        window["multi_run"].update(opt["multi_run"])
-                    if "runs" in opt:
-                        window["multi_runs_count"].update(opt["runs"])
-                    if "mode" in opt:
-                        window["modo_opt"].update(opt["mode"])
+                    # ============================================================
+                    # 3. NUEVO: Forzar actualización de visibilidad de Multi-Run
+                    # ============================================================
+                    # Fase 1
+                    if gui_vals.get("auto_fase1_multi_run", False):
+                        window["auto_fase1_runs_label"].update(visible=True)
+                        window["auto_fase1_runs"].update(visible=True)
+                    else:
+                        window["auto_fase1_runs_label"].update(visible=False)
+                        window["auto_fase1_runs"].update(visible=False)
+                    
+                    # Fase 2
+                    if gui_vals.get("auto_fase2_multi_run", False):
+                        window["auto_fase2_runs_label"].update(visible=True)
+                        window["auto_fase2_runs"].update(visible=True)
+                    else:
+                        window["auto_fase2_runs_label"].update(visible=False)
+                        window["auto_fase2_runs"].update(visible=False)
+                    
+                    # Fase 3
+                    if gui_vals.get("auto_fase3_multi_run", False):
+                        window["auto_fase3_runs_label"].update(visible=True)
+                        window["auto_fase3_runs"].update(visible=True)
+                    else:
+                        window["auto_fase3_runs_label"].update(visible=False)
+                        window["auto_fase3_runs"].update(visible=False)
 
+                    # ============================================================
+                    # 4. Mensaje de éxito
+                    # ============================================================
                     sg.popup("Semilla cargada correctamente.\nEl GUI fue actualizado.")
-                    # <--- NUEVO: Indicar éxito ---
                     window["status_indicator"].update("✅ Semilla cargada", text_color=COLORS["success"])
 
                 except Exception as e:
                     sg.popup_error(f"Error al cargar la Semilla:\n{e}")
-                    # <--- NUEVO: Indicar error ---
                     window["status_indicator"].update("❌ Error al cargar semilla", text_color=COLORS["danger"])
 
     window.close()

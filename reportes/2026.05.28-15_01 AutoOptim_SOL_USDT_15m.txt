@@ -1,0 +1,68 @@
+================================================================================
+        REPORTE DE OPTIMIZACIÓN AUTOMÁTICA MULTI-FASE
+================================================================================
+
+📅 Fecha: 28/05/2026 15:01:48
+📊 Activo: SOL/USDT
+⏱️ Timeframe: 15m
+📈 Velas utilizadas: 2000
+
+--------------------------------------------------------------------------------
+📋 RESUMEN POR FASE
+--------------------------------------------------------------------------------
+
+📌 Exploración Rápida (Fase 1)
+   • Mejor score: 0.4030
+   • Parámetros: 17 ajustados
+
+📌 Refinamiento (Fase 2)
+   • Mejor score: 0.4591
+   • Parámetros: 16 ajustados
+
+📌 Validación (Fase 3)
+   • Mejor score: 0.6209
+   • Parámetros: 17 ajustados
+   • Estabilidad: 100.0%
+
+--------------------------------------------------------------------------------
+🎯 MEJORES PARÁMETROS ENCONTRADOS
+--------------------------------------------------------------------------------
+
+📈 MEDIAS MÓVILES:
+   • ma1_type: SMA
+   • ma2_type: SMA
+   • ma1_length: 15
+   • ma2_length: 62
+
+📊 RSI:
+   • usar_rsi_long: True
+   • usar_rsi_short: False
+   • rsi_length: 6
+   • rsi_min: 52.5
+
+📉 ADX:
+   • adx_length: 18
+   • adx_threshold: 13.9
+
+🛡️ GESTIÓN DE RIESGO:
+   • stop_loss_pct: 0.9
+   • usar_tp_long: True
+   • usar_tp_short: True
+   • tp_long_pct: 0.4
+   • tp_short_pct: 0.7
+
+⚙️ OTROS PARÁMETROS:
+   • lookback: 3
+   • validation_window: 10
+
+--------------------------------------------------------------------------------
+📊 ESTADÍSTICAS DE VALIDACIÓN
+--------------------------------------------------------------------------------
+   • Score promedio: 0.6209
+   • Estabilidad: 100.0%
+   • Corridas de validación: 1
+
+================================================================================
+🔧 Estrategia lista para usar en el optimizador manual
+   (Puedes cargar estos parámetros en el GUI)
+================================================================================
