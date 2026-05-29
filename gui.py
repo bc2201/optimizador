@@ -78,6 +78,25 @@ COLORS = {
     "disabled": "#2c2c3e",       # Gris para campos deshabilitados
 }
 
+
+def refresh_scroll_panels(window):
+    """Fuerza la actualización de los paneles con scroll."""
+    # Forzar actualización de la ventana
+    window.refresh()
+    
+    # Forzar actualización del widget de scroll del panel izquierdo
+    try:
+        # Acceder al canvas de scroll del Column
+        column = window['left_scroll']
+        if column and hasattr(column, 'Widget') and column.Widget:
+            # Forzar actualización del canvas
+            column.Widget.update_idletasks()
+            # Asegurar que el scroll region se actualiza
+            column.Widget.canvas.configure(scrollregion=column.Widget.canvas.bbox("all"))
+    except:
+        pass
+
+
 # Configuración del tema de PySimpleGUI
 sg.LOOK_AND_FEEL_TABLE['TradingTheme'] = {
     'BACKGROUND': COLORS["bg_dark"],
@@ -1210,6 +1229,8 @@ def gui_main():
             window["col_reentry"].update(visible=is_on("enable_reentry", "auto_reentry"))
             window["col_post_reentry"].update(visible=is_on("enable_post_crossover_entry", "auto_post_crossover"))
 
+            refresh_scroll_panels(window) #agregado para refresh en scroll panel izquierdo
+
             # Auto-rellenar campos según checkbox activado
             is_auto_event = event in CHECKBOX_FIELDS and event.startswith("auto_")
             is_on_event = event in CHECKBOX_FIELDS and not event.startswith("auto_")
@@ -1217,6 +1238,10 @@ def gui_main():
                 fill_defaults(window, values, event, force=True)
             elif is_on_event and values.get(event) is True:
                 fill_defaults(window, values, event, force=False)
+
+
+            refresh_scroll_panels(window)  # <--- Agregar aquí también
+
 
             # Validación visual de rangos (todos los campos)
             validate_range(window, "rsi_length_min", "rsi_length_max", *DEFAULT_RANGES["rsi_length"],
