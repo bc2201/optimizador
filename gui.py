@@ -498,6 +498,99 @@ def make_auto_config_panel():
 
 
 
+def make_min_trades_panel():
+    """Construye el panel de cálculo de mínimo de trades sugerido."""
+    
+    # Datos base (hardcodeados - valores por defecto)
+    DATOS_BASE = [
+        {"estilo": "Scalping", "timeframe": "1m", "velas_default": 50000, "min_trades_default": 300},
+        {"estilo": "Intraday", "timeframe": "5m", "velas_default": 50000, "min_trades_default": 200},
+        {"estilo": "Intraday", "timeframe": "15m", "velas_default": 35000, "min_trades_default": 150},
+        {"estilo": "Swing corto", "timeframe": "1h", "velas_default": 17000, "min_trades_default": 80},
+        {"estilo": "Swing corto", "timeframe": "4h", "velas_default": 10000, "min_trades_default": 50},
+        {"estilo": "Swing medio", "timeframe": "1d", "velas_default": 7000, "min_trades_default": 100},
+        {"estilo": "Swing largo", "timeframe": "1d", "velas_default": 7000, "min_trades_default": 50},
+        {"estilo": "Value", "timeframe": "1d", "velas_default": 10000, "min_trades_default": 25},
+    ]
+    
+    # Función para calcular equivalencias
+    def calcular_equivalencia(velas, min_trades, es_cripto):
+        """Calcula trades por día/mes/año según tipo de activo."""
+        if es_cripto:
+            # Cripto: 24h x 7 días = trading continuo
+            horas_totales = velas * 0.25  # Aprox, depende del timeframe - se ajusta después
+            # Esto es un placeholder, el cálculo real se hará en la tabla
+            return 0
+        else:
+            # Acciones: 6.5 horas diarias, 20 días/mes, 252 días/año
+            return 0
+    
+    # Construir tabla con valores editables
+    layout = [
+        [sg.Text("📊 CÁLCULO DE MÍNIMO DE TRADES SUGERIDO", font=("Any", 12, "bold"))],
+        [sg.Text("Basado en estilo de trading, timeframe y cantidad de velas disponibles", font=("Any", 9), text_color="#aaaaaa")],
+        [sg.HorizontalSeparator()],
+        
+        # Encabezados de la tabla
+        [
+            sg.Text("Estilo", size=(14, 1), justification="center", font=("Any", 9, "bold")),
+            sg.Text("Timeframe", size=(10, 1), justification="center", font=("Any", 9, "bold")),
+            sg.Text("Velas", size=(10, 1), justification="center", font=("Any", 9, "bold")),
+            sg.Text("Min Trades", size=(12, 1), justification="center", font=("Any", 9, "bold")),
+            sg.Text("Cripto (24x7)", size=(14, 1), justification="center", font=("Any", 9, "bold")),
+            sg.Text("Acciones (6.5h/día)", size=(16, 1), justification="center", font=("Any", 9, "bold")),
+        ],
+        
+        # Filas de la tabla (generadas dinámicamente)
+    ]
+    
+    # Agregar una fila por cada estilo
+    for i, dato in enumerate(DATOS_BASE):
+        estilo = dato["estilo"]
+        tf = dato["timeframe"]
+        velas_default = dato["velas_default"]
+        min_trades_default = dato["min_trades_default"]
+        
+        # Claves únicas para cada campo
+        velas_key = f"tabla_velas_{i}"
+        min_trades_key = f"tabla_min_trades_{i}"
+        cripto_key = f"tabla_cripto_{i}"
+        acciones_key = f"tabla_acciones_{i}"
+        
+        fila = [
+            sg.Text(estilo, size=(14, 1), text_color="#bdbdbd"),
+            sg.Text(tf, size=(10, 1), text_color="#bdbdbd"),
+            sg.Input(str(velas_default), key=velas_key, size=(10, 1), enable_events=True),
+            sg.Input(str(min_trades_default), key=min_trades_key, size=(12, 1), enable_events=True),
+            sg.Text("--", key=cripto_key, size=(14, 1), text_color=COLORS["auto_color"]),
+            sg.Text("--", key=acciones_key, size=(16, 1), text_color=COLORS["auto_color"]),
+        ]
+        layout.append(fila)
+    
+    # Agregar separador
+    layout.append([sg.HorizontalSeparator()])
+    
+    # Información de referencia
+    layout.append([
+        sg.Text("📌 Referencia:", font=("Any", 9, "bold")),
+        sg.Text("Cripto: Trading 24/7 | Acciones: 6.5h diarias, 20 días/mes, 252 días/año", 
+                font=("Any", 8), text_color="#aaaaaa")
+    ])
+    
+    layout.append([
+        sg.Text("💡 Los valores de 'Equivalencia' muestran trades por día (timeframes < 1d) o por mes/año (timeframes ≥ 1d)",
+                font=("Any", 8), text_color="#aaaaaa")
+    ])
+    
+    layout.append([sg.Text("", size=(1, 10))])  # Espacio final
+    
+    return sg.Column(layout, key="min_trades_panel", scrollable=True, 
+                     vertical_scroll_only=True, expand_y=True)
+
+
+
+
+
 def make_left_panel():
     """Construye el panel izquierdo con todas las métricas y parámetros."""
     
@@ -1053,15 +1146,16 @@ def launch_gui():
     center_panel = make_center_panel()
     right_panel = make_right_panel()
     auto_config_panel = make_auto_config_panel()
+    min_trades_panel = make_min_trades_panel()  # <--- NUEVO
     
     # ============================================================
     # CORRECCIÓN: Envolver los paneles en listas para las pestañas
     # ============================================================
     tab_principal = sg.Tab("Principal", [[center_panel]], key="tab_principal")
     tab_auto_config = sg.Tab("Configuración Auto", [[auto_config_panel]], key="tab_auto_config")
+    tab_min_trades = sg.Tab("Cálculo Min Trades", [[min_trades_panel]], key="tab_min_trades")  # <--- NUEVO
     
-    tab_group = sg.TabGroup([[tab_principal, tab_auto_config]], 
-                            expand_x=True, expand_y=True, key="tab_group")
+    tab_group = sg.TabGroup([[tab_principal, tab_auto_config, tab_min_trades]], expand_x=True, expand_y=True, key="tab_group")
     
     layout = [[
         sg.Column([[left_panel]], expand_x=True, expand_y=True, pad=(0, 0)),
@@ -1086,6 +1180,15 @@ def launch_gui():
     for key, val in DEFAULTS_AUTO.items():
         if key in window.key_dict:
             window[key].update(val)
+
+
+    # Inicializar valores de equivalencia en la tabla de min trades
+    try:
+        for i in range(8):  # 8 filas en la tabla
+            # Disparar eventos para calcular valores iniciales
+            window.write_event_value(f"tabla_velas_{i}", None)
+    except:
+        pass
     
     return window
 
@@ -1292,6 +1395,70 @@ def gui_main():
                 window["col_cooldown"].update(visible=vals["enable_cooldown"] or vals.get("auto_cooldown", False))
                 window["col_reentry"].update(visible=vals["enable_reentry"] or vals.get("auto_reentry", False))
                 window["col_post_reentry"].update(visible=vals["enable_post_crossover_entry"] or vals.get("auto_post_crossover", False))
+
+
+        # Dentro del event loop, reemplazar el bloque de cálculo de equivalencias
+        if event and (event.startswith("tabla_velas_") or event.startswith("tabla_min_trades_")):
+            try:
+                if event.startswith("tabla_velas_"):
+                    idx = int(event.split("_")[2])
+                else:
+                    idx = int(event.split("_")[3])
+                
+                if idx >= 0:
+                    velas_key = f"tabla_velas_{idx}"
+                    min_trades_key = f"tabla_min_trades_{idx}"
+                    
+                    timeframes = ["1m", "5m", "15m", "1h", "4h", "1d", "1d", "1d"]
+                    timeframe = timeframes[idx]
+                    
+                    try:
+                        velas = int(values.get(velas_key, 0))
+                        min_trades = int(values.get(min_trades_key, 0))
+                    except:
+                        velas = 0
+                        min_trades = 0
+                    
+                    # ============================================================
+                    # DENOMINADORES por timeframe (derivados del Excel)
+                    #
+                    # Sub-hora (1m,5m,15m): se trata cada vela como 1 minuto
+                    #   cripto   → velas / 1440  (minutos/día 24h)   → ops/día
+                    #   acciones → velas / 390   (minutos/día 6.5h)  → ops/día
+                    #
+                    # Horas (1h,4h): se trata cada vela como 1 hora
+                    #   cripto   → velas / 720   (horas/mes 24h*30)  → ops/mes
+                    #   acciones → velas / 130   (horas/mes 6.5h*20) → ops/mes
+                    #
+                    # Diario (1d):
+                    #   cripto   → velas / 365   (días/año)           → ops/año
+                    #   acciones → velas / 252   (días mercado/año)   → ops/año
+                    # ============================================================
+                    if timeframe in ["1m", "5m", "15m"]:
+                        periodos_cripto   = velas / 1440.0
+                        periodos_acciones = velas / 390.0
+                        unidad = "ops/día"
+                    elif timeframe in ["1h", "4h"]:
+                        periodos_cripto   = velas / 720.0
+                        periodos_acciones = velas / 130.0
+                        unidad = "ops/mes"
+                    else:  # 1d
+                        periodos_cripto   = velas / 365.0
+                        periodos_acciones = velas / 252.0
+                        unidad = "ops/año"
+
+                    cripto_val   = min_trades / periodos_cripto   if periodos_cripto   > 0 else 0
+                    acciones_val = min_trades / periodos_acciones if periodos_acciones > 0 else 0
+
+                    cripto_texto   = f"{cripto_val:.2f} {unidad}"
+                    acciones_texto = f"{acciones_val:.2f} {unidad}"
+                    
+                    # Actualizar GUI
+                    window[f"tabla_cripto_{idx}"].update(cripto_texto)
+                    window[f"tabla_acciones_{idx}"].update(acciones_texto)
+                    
+            except Exception as e:
+                print(f"Error actualizando tabla min trades: {e}")
 
         
 
