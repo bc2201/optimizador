@@ -81,7 +81,7 @@ DEFAULT_RANGES = {
     "adx_length": (2, 50),
     "adx_threshold": (5.0, 70.0),
     "lookback": (1, 15),
-    "validation_window": (1, 15),
+    "validation_window": (1, 25),
     "htf_length": (10, 60),
     "stop_loss": (0.3, 10.0),
     "be": (1, 10),
