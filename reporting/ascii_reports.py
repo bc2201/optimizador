@@ -38,18 +38,51 @@ def build_ascii_table(rows, title=None):
     return "\n".join(lines)
 
 
-def _bool_mode(values, features, key_flag, key_auto):
-    """Devuelve (preset_str, optuna_str) para features booleanos."""
+def _bool_mode(values, best_params, key_flag, key_auto):
+    """
+    Devuelve (preset_str, optuna_str) para features booleanos.
+    Ahora con soporte para leer el valor real de best_params.
+    """
     auto = values.get(key_auto, False)
     base_on = bool(values.get(key_flag, False))
 
     if auto:
         preset = "AUTO"
-        opt_val = features.get(key_flag, None)
-        if opt_val is None:
-            optuna = "Optuna: N/A"
-        else:
+        # Buscar el valor real que Optuna usó en best_params
+        # Las claves en best_params pueden ser "usar_rsi_long", "usar_adx", etc.
+        param_name = None
+        if key_flag == "use_rsi_long":
+            param_name = "usar_rsi_long"
+        elif key_flag == "use_rsi_short":
+            param_name = "usar_rsi_short"
+        elif key_flag == "use_adx_filter":
+            param_name = "usar_adx"
+        elif key_flag == "enable_high_condition":
+            param_name = "usar_high"
+        elif key_flag == "enable_low_condition":
+            param_name = "usar_low"
+        elif key_flag == "use_htf_filter":
+            param_name = "usar_htf"
+        elif key_flag == "use_stop_loss":
+            param_name = "usar_sl"
+        elif key_flag == "activar_stop_be":
+            param_name = "usar_be"
+        elif key_flag == "use_take_profit_long":
+            param_name = "usar_tp_long"
+        elif key_flag == "use_take_profit_short":
+            param_name = "usar_tp_short"
+        elif key_flag == "enable_cooldown":
+            param_name = "usar_cooldown"
+        elif key_flag == "enable_reentry":
+            param_name = "usar_reentry"
+        elif key_flag == "enable_post_crossover_entry":
+            param_name = "usar_post_re"
+        
+        if param_name and param_name in best_params:
+            opt_val = best_params[param_name]
             optuna = f"Optuna: {opt_val}"
+        else:
+            optuna = "Optuna: N/A"
     else:
         preset = "ON" if base_on else "OFF"
         optuna = "Fijo ON" if base_on else "Fijo OFF"
@@ -57,11 +90,43 @@ def _bool_mode(values, features, key_flag, key_auto):
     return preset, optuna
 
 
-def _range_str(config_range):
-    if not config_range:
-        return "min: N/A | max: N/A"
-    vmin, vmax = config_range
-    return f"min: {vmin} | max: {vmax}"
+def _format_range_or_value(range_config, param_value):
+    """
+    Formatea un rango o valor para mostrar en el reporte.
+    
+    Args:
+        range_config: Tupla (min, max) o None
+        param_value: Valor que Optuna usó (puede ser None)
+    
+    Returns:
+        String con el formato adecuado
+    """
+    # Caso 1: Tenemos el valor real de Optuna (no es None)
+    if param_value is not None:
+        # Si es entero o float, formatear apropiadamente
+        if isinstance(param_value, int):
+            return f"{param_value}"
+        else:
+            return f"{param_value:.1f}"
+    
+    # Caso 2: Tenemos rango configurado pero no valor
+    if range_config is not None:
+        min_val, max_val = range_config
+        if min_val == max_val:
+            # Valor fijo
+            if isinstance(min_val, int):
+                return f"{min_val}"
+            else:
+                return f"{min_val:.1f}"
+        else:
+            # Rango
+            if isinstance(min_val, int):
+                return f"{min_val} | {max_val}"
+            else:
+                return f"{min_val:.1f} | {max_val:.1f}"
+    
+    # Caso 3: No hay nada
+    return "N/A"
 
 
 def generar_reporte_ascii(values, config, best_params, equity_curve, trades, version_optimizador, search_space_info=None):
@@ -153,9 +218,6 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append("")
     lines.append("")
     lines.append("📊 Estadísticas de Validación:")
-    
-    # Score final (si existe en resultado_final, pero en manual no siempre)
-    # Buscar score en best_params o calcular algo
     lines.append("")
     lines.append("")
     lines.append("=" * 77)
@@ -242,9 +304,18 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append("+-----------------+------------------------------+---------------+")
     lines.append(f"| RSI Long        | {preset_rsi_long:<28} | {opt_rsi_long:<13} |")
     lines.append(f"| RSI Short       | {preset_rsi_short:<28} | {opt_rsi_short:<13} |")
-    lines.append(f"| RSI Length      | AUTO ({_range_str(config.get('rsi_length_range')):<20}) | {best_params.get('rsi_length', 'N/A'):<13} |")
-    lines.append(f"| RSI min (Long)  | AUTO ({_range_str(config.get('rsi_min_range')):<20}) | {best_params.get('rsi_min', 'N/A'):<13} |")
-    lines.append(f"| RSI max (Short) | AUTO ({_range_str(config.get('rsi_max_range')):<20}) | {best_params.get('rsi_max', 'N/A'):<13} |")
+    
+    # RSI Length - mostrar valor real de Optuna
+    rsi_length_val = best_params.get('rsi_length', None)
+    lines.append(f"| RSI Length      | AUTO ({_format_range_or_value(config.get('rsi_length_range'), rsi_length_val):<20}) | {_format_range_or_value(config.get('rsi_length_range'), rsi_length_val):<13} |")
+    
+    # RSI min
+    rsi_min_val = best_params.get('rsi_min', None)
+    lines.append(f"| RSI min (Long)  | AUTO ({_format_range_or_value(config.get('rsi_min_range'), rsi_min_val):<20}) | {_format_range_or_value(config.get('rsi_min_range'), rsi_min_val):<13} |")
+    
+    # RSI max
+    rsi_max_val = best_params.get('rsi_max', None)
+    lines.append(f"| RSI max (Short) | AUTO ({_format_range_or_value(config.get('rsi_max_range'), rsi_max_val):<20}) | {_format_range_or_value(config.get('rsi_max_range'), rsi_max_val):<13} |")
     lines.append("+-----------------+------------------------------+---------------+")
     lines.append("")
     
@@ -253,8 +324,12 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append("| ADX                                                 |")
     lines.append("+------------+------------------------------+---------+")
     lines.append(f"| ADX        | {preset_adx:<28} | {opt_adx:<7} |")
-    lines.append(f"| ADX Length | AUTO ({_range_str(config.get('adx_length_range')):<20}) | {best_params.get('adx_length', 'N/A'):<7} |")
-    lines.append(f"| ADX Umbral | AUTO ({_range_str(config.get('adx_thr_range')):<20}) | {best_params.get('adx_threshold', 'N/A'):<7} |")
+    
+    adx_len_val = best_params.get('adx_length', None)
+    lines.append(f"| ADX Length | AUTO ({_format_range_or_value(config.get('adx_length_range'), adx_len_val):<20}) | {_format_range_or_value(config.get('adx_length_range'), adx_len_val):<7} |")
+    
+    adx_thr_val = best_params.get('adx_threshold', None)
+    lines.append(f"| ADX Umbral | AUTO ({_format_range_or_value(config.get('adx_thr_range'), adx_thr_val):<20}) | {_format_range_or_value(config.get('adx_thr_range'), adx_thr_val):<7} |")
     lines.append("+------------+------------------------------+---------+")
     lines.append("")
     
@@ -266,11 +341,16 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append("+--------------------+-------------------------+---------+")
     lines.append(f"| High Condition     | {preset_high:<23} | {opt_high:<7} |")
     lines.append(f"| Low Condition      | {preset_low:<23} | {opt_low:<7} |")
-    lines.append(f"| Lookback           | AUTO ({_range_str(config.get('lookback_range')):<20}) | {best_params.get('lookback', 'N/A'):<7} |")
+    
+    lookback_val = best_params.get('lookback', None)
+    lines.append(f"| Lookback           | AUTO ({_format_range_or_value(config.get('lookback_range'), lookback_val):<20}) | {_format_range_or_value(config.get('lookback_range'), lookback_val):<7} |")
+    
     val_win_auto = "AUTO" if values.get("use_validation_window") else "OFF"
-    val_win_value = best_params.get("validation_window", "N/A") if values.get("use_validation_window") else "Fijo OFF"
-    lines.append(f"| Validation Window  | {val_win_auto:<23} | {val_win_value:<7} |")
-    lines.append(f"| Range (Val Window) | AUTO ({_range_str(config.get('valwin_range')):<20}) | {best_params.get('validation_window', 'N/A'):<7} |")
+    val_win_val = best_params.get('validation_window', None) if values.get("use_validation_window") else "Fijo OFF"
+    lines.append(f"| Validation Window  | {val_win_auto:<23} | {val_win_val:<7} |")
+    
+    valwin_val = best_params.get('validation_window', None)
+    lines.append(f"| Range (Val Window) | AUTO ({_format_range_or_value(config.get('valwin_range'), valwin_val):<20}) | {_format_range_or_value(config.get('valwin_range'), valwin_val):<7} |")
     lines.append("+--------------------+-------------------------+---------+")
     lines.append("")
     
@@ -281,7 +361,9 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append(f"| HTF Filter | {preset_htf:<24} | {opt_htf:<8} |")
     lines.append(f"| Timeframe  | N/A                      | N/A      |")
     lines.append(f"| MA Type    | N/A                      | N/A      |")
-    lines.append(f"| HTF Length | AUTO ({_range_str(config.get('htf_length_range')):<20}) | {best_params.get('htf_length', 'N/A'):<8} |")
+    
+    htf_val = best_params.get('htf_length', None)
+    lines.append(f"| HTF Length | AUTO ({_format_range_or_value(config.get('htf_length_range'), htf_val):<20}) | {_format_range_or_value(config.get('htf_length_range'), htf_val):<8} |")
     lines.append("+------------+--------------------------+----------+")
     lines.append("")
     
@@ -294,13 +376,21 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append("| Gestión de Riesgo                                                   |")
     lines.append("+-------------------+----------------------------+--------------------+")
     lines.append(f"| Stop Loss         | {preset_sl:<26} | {opt_sl:<18} |")
-    lines.append(f"| SL %              | AUTO ({_range_str(config.get('sl_range')):<20}) | {best_params.get('stop_loss_pct', 'N/A'):<18} |")
+    
+    sl_val = best_params.get('stop_loss_pct', None)
+    lines.append(f"| SL %              | AUTO ({_format_range_or_value(config.get('sl_range'), sl_val):<20}) | {_format_range_or_value(config.get('sl_range'), sl_val):<18} |")
     lines.append(f"| Break Even        | {preset_be:<26} | {opt_be:<18} |")
-    lines.append(f"| Velas para BE     | AUTO ({_range_str(config.get('be_range')):<20}) | {best_params.get('velas_para_be', 'N/A'):<18} |")
+    
+    be_val = best_params.get('velas_para_be', None)
+    lines.append(f"| Velas para BE     | AUTO ({_format_range_or_value(config.get('be_range'), be_val):<20}) | {_format_range_or_value(config.get('be_range'), be_val):<18} |")
     lines.append(f"| Take Profit Long  | {preset_tp_long:<26} | {opt_tp_long:<18} |")
-    lines.append(f"| TP long %         | AUTO ({_range_str(config.get('tp_long_range')):<20}) | {best_params.get('tp_long_pct', 'N/A'):<18} |")
+    
+    tp_long_val = best_params.get('tp_long_pct', None)
+    lines.append(f"| TP long %         | AUTO ({_format_range_or_value(config.get('tp_long_range'), tp_long_val):<20}) | {_format_range_or_value(config.get('tp_long_range'), tp_long_val):<18} |")
     lines.append(f"| Take Profit Short | {preset_tp_short:<26} | {opt_tp_short:<18} |")
-    lines.append(f"| TP short %        | AUTO ({_range_str(config.get('tp_short_range')):<20}) | {best_params.get('tp_short_pct', 'N/A'):<18} |")
+    
+    tp_short_val = best_params.get('tp_short_pct', None)
+    lines.append(f"| TP short %        | AUTO ({_format_range_or_value(config.get('tp_short_range'), tp_short_val):<20}) | {_format_range_or_value(config.get('tp_short_range'), tp_short_val):<18} |")
     lines.append("+-------------------+----------------------------+--------------------+")
     lines.append("")
     
@@ -312,12 +402,20 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append("| Gestión Operaciones                                         |")
     lines.append("+----------------------+---------------------------+----------+")
     lines.append(f"| Cooldown             | {preset_cool:<25} | {opt_cool:<8} |")
-    lines.append(f"| Max Losing streak    | AUTO ({_range_str(config.get('mls_range')):<20}) | {best_params.get('max_losing_streak', 'N/A'):<8} |")
-    lines.append(f"| Cooldown bars        | AUTO ({_range_str(config.get('cool_range')):<20}) | {best_params.get('cooldown_bars', 'N/A'):<8} |")
+    
+    mls_val = best_params.get('max_losing_streak', None)
+    lines.append(f"| Max Losing streak    | AUTO ({_format_range_or_value(config.get('mls_range'), mls_val):<20}) | {_format_range_or_value(config.get('mls_range'), mls_val):<8} |")
+    
+    cool_val = best_params.get('cooldown_bars', None)
+    lines.append(f"| Cooldown bars        | AUTO ({_format_range_or_value(config.get('cool_range'), cool_val):<20}) | {_format_range_or_value(config.get('cool_range'), cool_val):<8} |")
     lines.append(f"| Reentry              | {preset_re:<25} | {opt_re:<8} |")
-    lines.append(f"| Max reentries        | AUTO ({_range_str(config.get('re_range')):<20}) | {best_params.get('max_reentries_allowed', 'N/A'):<8} |")
+    
+    re_val = best_params.get('max_reentries_allowed', None)
+    lines.append(f"| Max reentries        | AUTO ({_format_range_or_value(config.get('re_range'), re_val):<20}) | {_format_range_or_value(config.get('re_range'), re_val):<8} |")
     lines.append(f"| Post Crossover Entry | {preset_post:<25} | {opt_post:<8} |")
-    lines.append(f"| Max post reentries   | AUTO ({_range_str(config.get('postre_range')):<20}) | {best_params.get('max_post_reentries', 'N/A'):<8} |")
+    
+    post_val = best_params.get('max_post_reentries', None)
+    lines.append(f"| Max post reentries   | AUTO ({_format_range_or_value(config.get('postre_range'), post_val):<20}) | {_format_range_or_value(config.get('postre_range'), post_val):<8} |")
     lines.append("+----------------------+---------------------------+----------+")
     lines.append("")
     

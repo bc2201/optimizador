@@ -1,8 +1,6 @@
 """
 OPTIMIZADOR DE ESTRATEGIAS - MÓDULO PRINCIPAL
 =============================================
-Autor: Trading System
-Versión: 1.8
 
 Este módulo contiene la lógica central del optimizador:
 - Descarga de datos de Binance (cripto) y Yahoo Finance (acciones)
@@ -565,168 +563,204 @@ def objective(trial, df, config, features, metrics_config, study_cache, study_lo
             return trial.suggest_categorical(trial_key, [True, False])
         return bool(mode)
 
+    # ============================================================
+    # FUNCIÓN AUXILIAR PARA SUGERIR VALORES FIJOS O RANGOS
+    # ============================================================
+    def suggest_or_fixed(trial, name, range_config, is_int=False, step=None):
+        """
+        Si min == max, retorna el valor fijo sin usar suggest.
+        De lo contrario, usa suggest_int o suggest_float según corresponda.
+        """
+        if range_config is None:
+            return None
+        
+        min_val, max_val = range_config
+        
+        # Si es un valor fijo (min == max)
+        if min_val == max_val:
+            return min_val
+        
+        # Si es un rango válido
+        if min_val < max_val:
+            if is_int:
+                return trial.suggest_int(name, min_val, max_val)
+            else:
+                if step:
+                    return trial.suggest_float(name, min_val, max_val, step=step)
+                else:
+                    return trial.suggest_float(name, min_val, max_val)
+        
+        # Si llegamos aquí, algo anda mal (min > max)
+        return None
 
     # --- MEDIAS MÓVILES ---
-    # ------------------------
-
     params["ma1_type"] = trial.suggest_categorical("ma1_type", config["tipos_ma"])
     params["ma2_type"] = trial.suggest_categorical("ma2_type", config["tipos_ma"])
-    params["ma1_length"] = trial.suggest_int("ma1_length", config["ma1_min"], config["ma1_max"])
-    params["ma2_length"] = trial.suggest_int("ma2_length", config["ma2_min"], config["ma2_max"])
+    params["ma1_length"] = suggest_or_fixed(trial, "ma1_length", config.get("ma1_range"), is_int=True)
+    params["ma2_length"] = suggest_or_fixed(trial, "ma2_length", config.get("ma2_range"), is_int=True)
 
     # Validación: MA1 debe ser más rápida que MA2
-    if params["ma1_length"] >= params["ma2_length"]:
-        return 0.0
-
+    if params["ma1_length"] is not None and params["ma2_length"] is not None:
+        if params["ma1_length"] >= params["ma2_length"]:
+            return 0.0
 
     # --- RSI ---
-    # ------------------------
     usar_rsi_long = resolve("use_rsi_long", "usar_rsi_long")
     usar_rsi_short = resolve("use_rsi_short", "usar_rsi_short")
 
     # RSI Length (solo si al menos uno está activo)
     if usar_rsi_long or usar_rsi_short:
-        params["rsi_length"] = trial.suggest_int("rsi_length", *config["rsi_length_range"])
+        params["rsi_length"] = suggest_or_fixed(trial, "rsi_length", config.get("rsi_length_range"), is_int=True)
+        if params["rsi_length"] is None:
+            params["rsi_length"] = 14
     else:
         params["rsi_length"] = 14
 
     # RSI min (solo si LONG está activo)
     if usar_rsi_long:
-        params["rsi_min"] = trial.suggest_float("rsi_min", *config["rsi_min_range"], step=0.1)
+        params["rsi_min"] = suggest_or_fixed(trial, "rsi_min", config.get("rsi_min_range"), is_int=False, step=0.1)
+        if params["rsi_min"] is None:
+            params["rsi_min"] = 55.0
+        
         # Validación: rsi_min debe ser >50 (sobrecompra)
         if params["rsi_min"] <= 50:
             return 0.0
     else:
-        params["rsi_min"] = 55.0  # valor por defecto (no se usará)
+        params["rsi_min"] = 55.0
 
     # RSI max (solo si SHORT está activo)
     if usar_rsi_short:
-        params["rsi_max"] = trial.suggest_float("rsi_max", *config["rsi_max_range"], step=0.1)
+        params["rsi_max"] = suggest_or_fixed(trial, "rsi_max", config.get("rsi_max_range"), is_int=False, step=0.1)
+        if params["rsi_max"] is None:
+            params["rsi_max"] = 45.0
+        
         # Validación: rsi_max debe ser <50 (sobreventa)
         if params["rsi_max"] >= 50:
             return 0.0
     else:
-        params["rsi_max"] = 45.0  # valor por defecto (no se usará)
-
+        params["rsi_max"] = 45.0
 
     # --- ADX ---
-    # ------------------------
-
     usar_adx = resolve("use_adx_filter", "usar_adx")
     if usar_adx:
-        params["adx_length"] = trial.suggest_int("adx_length", *config["adx_length_range"])
-        params["adx_threshold"] = trial.suggest_float("adx_threshold", *config["adx_thr_range"], step=0.1)
+        params["adx_length"] = suggest_or_fixed(trial, "adx_length", config.get("adx_length_range"), is_int=True)
+        if params["adx_length"] is None:
+            params["adx_length"] = 14
+        
+        params["adx_threshold"] = suggest_or_fixed(trial, "adx_threshold", config.get("adx_thr_range"), is_int=False, step=0.1)
+        if params["adx_threshold"] is None:
+            params["adx_threshold"] = 18.0
     else:
         params["adx_length"] = 14
         params["adx_threshold"] = 18.0
 
-
     # --- HIGH/LOW ---
-    # ------------------------
-
     usar_high = resolve("enable_high_condition", "usar_high")
     usar_low = resolve("enable_low_condition", "usar_low")
     if usar_high or usar_low:
-        params["lookback"] = trial.suggest_int("lookback", *config["lookback_range"])
+        params["lookback"] = suggest_or_fixed(trial, "lookback", config.get("lookback_range"), is_int=True)
+        if params["lookback"] is None:
+            params["lookback"] = 5
     else:
         params["lookback"] = 5
 
-
     # --- VALIDATION WINDOW ---
-    # ------------------------
-
-    if features["use_validation_window"]:
-        params["validation_window"] = trial.suggest_int("validation_window", *config["valwin_range"])
+    if features.get("use_validation_window", False):
+        params["validation_window"] = suggest_or_fixed(trial, "validation_window", config.get("valwin_range"), is_int=True)
+        if params["validation_window"] is None:
+            params["validation_window"] = 20
     else:
         params["validation_window"] = 20
 
-
-
     # --- HTF FILTER ---
-    # ------------------------
-
     usar_htf = resolve("use_htf_filter", "usar_htf")
     if usar_htf:
-        params["htf_length"] = trial.suggest_int("htf_length", *config["htf_length_range"])
+        params["htf_length"] = suggest_or_fixed(trial, "htf_length", config.get("htf_length_range"), is_int=True)
+        if params["htf_length"] is None:
+            params["htf_length"] = 30
     else:
         params["htf_length"] = 30
 
-
     # --- STOP LOSS ---
-    # ------------------------
-
     usar_sl = resolve("use_stop_loss", "usar_sl")
     if usar_sl:
-        params["stop_loss_pct"] = trial.suggest_float("stop_loss_pct", *config["sl_range"], step=0.1)
+        params["stop_loss_pct"] = suggest_or_fixed(trial, "stop_loss_pct", config.get("sl_range"), is_int=False, step=0.1)
+        if params["stop_loss_pct"] is None:
+            params["stop_loss_pct"] = 1.0
     else:
         params["stop_loss_pct"] = 1.0
 
-
     # --- BREAK EVEN ---
-    # ------------------------
-
     usar_be = resolve("activar_stop_be", "usar_be")
     if usar_be:
-        params["velas_para_be"] = trial.suggest_int("velas_para_be", *config["be_range"])
+        params["velas_para_be"] = suggest_or_fixed(trial, "velas_para_be", config.get("be_range"), is_int=True)
+        if params["velas_para_be"] is None:
+            params["velas_para_be"] = 3
     else:
         params["velas_para_be"] = 3
 
-
     # --- TAKE PROFIT ---
-    # ------------------------
-
     usar_tp_long = resolve("use_take_profit_long", "usar_tp_long")
     usar_tp_short = resolve("use_take_profit_short", "usar_tp_short")
+    
     if usar_tp_long:
-        params["tp_long_pct"] = trial.suggest_float("tp_long_pct", *config["tp_long_range"], step=0.1)
+        params["tp_long_pct"] = suggest_or_fixed(trial, "tp_long_pct", config.get("tp_long_range"), is_int=False, step=0.1)
+        if params["tp_long_pct"] is None:
+            params["tp_long_pct"] = 2.0
     else:
         params["tp_long_pct"] = 2.0
+    
     if usar_tp_short:
-        params["tp_short_pct"] = trial.suggest_float("tp_short_pct", *config["tp_short_range"], step=0.1)
+        params["tp_short_pct"] = suggest_or_fixed(trial, "tp_short_pct", config.get("tp_short_range"), is_int=False, step=0.1)
+        if params["tp_short_pct"] is None:
+            params["tp_short_pct"] = 2.0
     else:
         params["tp_short_pct"] = 2.0
 
-
     # --- COOLDOWN ---
-    # ------------------------
-
     usar_cooldown = resolve("enable_cooldown", "usar_cooldown")
     if usar_cooldown:
-        params["max_losing_streak"] = trial.suggest_int("max_losing_streak", *config["mls_range"])
-        params["cooldown_bars"] = trial.suggest_int("cooldown_bars", *config["cool_range"])
+        params["max_losing_streak"] = suggest_or_fixed(trial, "max_losing_streak", config.get("mls_range"), is_int=True)
+        if params["max_losing_streak"] is None:
+            params["max_losing_streak"] = 1
+        
+        params["cooldown_bars"] = suggest_or_fixed(trial, "cooldown_bars", config.get("cool_range"), is_int=True)
+        if params["cooldown_bars"] is None:
+            params["cooldown_bars"] = 50
     else:
         params["max_losing_streak"] = 1
         params["cooldown_bars"] = 50
 
-
     # --- REENTRADAS ---
-    # ------------------------
-
     usar_reentry = resolve("enable_reentry", "usar_reentry")
     usar_post_re = resolve("enable_post_crossover_entry", "usar_post_re")
+    
     if usar_reentry:
-        params["max_reentries_allowed"] = trial.suggest_int("max_reentries_allowed", *config["re_range"])
+        params["max_reentries_allowed"] = suggest_or_fixed(trial, "max_reentries_allowed", config.get("re_range"), is_int=True)
+        if params["max_reentries_allowed"] is None:
+            params["max_reentries_allowed"] = 0
     else:
         params["max_reentries_allowed"] = 0
+    
     if usar_post_re:
-        params["max_post_reentries"] = trial.suggest_int("max_post_reentries", *config["postre_range"])
+        params["max_post_reentries"] = suggest_or_fixed(trial, "max_post_reentries", config.get("postre_range"), is_int=True)
+        if params["max_post_reentries"] is None:
+            params["max_post_reentries"] = 0
     else:
         params["max_post_reentries"] = 0
 
-
     # --- EJECUTAR BACKTEST ---
-    # ------------------------
     profit_factor, equity_curve, trades = run_backtest(
         df,
         **params,
-        enable_long_trades=features["enable_long_trades"],
-        enable_short_trades=features["enable_short_trades"],
+        enable_long_trades=features.get("enable_long_trades", True),
+        enable_short_trades=features.get("enable_short_trades", True),
         use_rsi_long=usar_rsi_long,
         use_rsi_short=usar_rsi_short,
         use_adx_filter=usar_adx,
         enable_high_condition=usar_high,
         enable_low_condition=usar_low,
-        use_validation_window=features["use_validation_window"],
+        use_validation_window=features.get("use_validation_window", False),
         use_htf_filter=usar_htf,
         use_stop_loss=usar_sl,
         activar_stop_be=usar_be,
@@ -826,46 +860,236 @@ def get_range(values, key_min, key_max, default_min, default_max, cast_type=floa
         return default_min, default_max
 
 
-def build_config(values):
-    """Construye el diccionario de configuración de rangos desde el GUI."""
-    tipos_ma = []
-    if values.get("ma_ema"):
-        tipos_ma.append("EMA")
-    if values.get("ma_sma"):
-        tipos_ma.append("SMA")
-    if values.get("ma_wma"):
-        tipos_ma.append("WMA")
-    if values.get("ma_hma"):
-        tipos_ma.append("HMA")
-    if values.get("ma_dema"):
-        tipos_ma.append("DEMA")
 
+def build_config(values):
+    """Construye la configuración de rangos desde los valores del GUI."""
+    config = {}
+    
+    # ============================================================
+    # MEDIAS MÓVILES
+    # ============================================================
+    tipos_ma = []
+    if values.get("ma_ema", False):
+        tipos_ma.append("EMA")
+    if values.get("ma_sma", False):
+        tipos_ma.append("SMA")
+    if values.get("ma_wma", False):
+        tipos_ma.append("WMA")
+    if values.get("ma_hma", False):
+        tipos_ma.append("HMA")
+    if values.get("ma_dema", False):
+        tipos_ma.append("DEMA")
+    
     if not tipos_ma:
         return None
+    
+    config["tipos_ma"] = tipos_ma
+    
+    # MA1
+    try:
+        ma1_min = int(values.get("ma1_min", ""))
+        ma1_max = int(values.get("ma1_max", ""))
+        if ma1_min > ma1_max:  # Permitir iguales (valor fijo)
+            return None
+        config["ma1_range"] = (ma1_min, ma1_max)
+    except:
+        return None
+    
+    # MA2
+    try:
+        ma2_min = int(values.get("ma2_min", ""))
+        ma2_max = int(values.get("ma2_max", ""))
+        if ma2_min > ma2_max:  # Permitir iguales (valor fijo)
+            return None
+        config["ma2_range"] = (ma2_min, ma2_max)
+    except:
+        return None
+    
+    # ============================================================
+    # RSI
+    # ============================================================
+    use_rsi_long = values.get("use_rsi_long", False) or values.get("auto_rsi_long", False)
+    use_rsi_short = values.get("use_rsi_short", False) or values.get("auto_rsi_short", False)
+    
+    if use_rsi_long or use_rsi_short:
+        try:
+            rsi_len_min = int(values.get("rsi_length_min", ""))
+            rsi_len_max = int(values.get("rsi_length_max", ""))
+            if rsi_len_min <= rsi_len_max:
+                config["rsi_length_range"] = (rsi_len_min, rsi_len_max)
+        except:
+            pass
+    
+    if use_rsi_long:
+        try:
+            rsi_min_min = float(values.get("rsi_min_min", ""))
+            rsi_min_max = float(values.get("rsi_min_max", ""))
+            if rsi_min_min <= rsi_min_max:
+                config["rsi_min_range"] = (rsi_min_min, rsi_min_max)
+        except:
+            pass
+    
+    if use_rsi_short:
+        try:
+            rsi_max_min = float(values.get("rsi_max_min", ""))
+            rsi_max_max = float(values.get("rsi_max_max", ""))
+            if rsi_max_min <= rsi_max_max:
+                config["rsi_max_range"] = (rsi_max_min, rsi_max_max)
+        except:
+            pass
+    
+    # ============================================================
+    # ADX
+    # ============================================================
+    if values.get("use_adx_filter", False) or values.get("auto_adx_filter", False):
+        try:
+            adx_len_min = int(values.get("adx_length_min", ""))
+            adx_len_max = int(values.get("adx_length_max", ""))
+            if adx_len_min <= adx_len_max:
+                config["adx_length_range"] = (adx_len_min, adx_len_max)
+        except:
+            pass
+        
+        try:
+            adx_thr_min = float(values.get("adx_threshold_min", ""))
+            adx_thr_max = float(values.get("adx_threshold_max", ""))
+            if adx_thr_min <= adx_thr_max:
+                config["adx_thr_range"] = (adx_thr_min, adx_thr_max)
+        except:
+            pass
+    
+    # ============================================================
+    # LOOKBACK
+    # ============================================================
+    if values.get("enable_high_condition", False) or values.get("enable_low_condition", False) or \
+       values.get("auto_high_condition", False) or values.get("auto_low_condition", False):
+        try:
+            lb_min = int(values.get("lookback_min", ""))
+            lb_max = int(values.get("lookback_max", ""))
+            if lb_min <= lb_max:
+                config["lookback_range"] = (lb_min, lb_max)
+        except:
+            pass
+    
+    # ============================================================
+    # VALIDATION WINDOW
+    # ============================================================
+    if values.get("use_validation_window", False):
+        try:
+            vw_min = int(values.get("validation_window_min", ""))
+            vw_max = int(values.get("validation_window_max", ""))
+            if vw_min <= vw_max:
+                config["valwin_range"] = (vw_min, vw_max)
+        except:
+            pass
+    
+    # ============================================================
+    # HTF
+    # ============================================================
+    if values.get("use_htf_filter", False) or values.get("auto_htf_filter", False):
+        try:
+            htf_min = int(values.get("htf_length_min", ""))
+            htf_max = int(values.get("htf_length_max", ""))
+            if htf_min <= htf_max:
+                config["htf_length_range"] = (htf_min, htf_max)
+        except:
+            pass
+    
+    # ============================================================
+    # STOP LOSS
+    # ============================================================
+    if values.get("use_stop_loss", False) or values.get("auto_stop_loss", False):
+        try:
+            sl_min = float(values.get("stop_loss_min", ""))
+            sl_max = float(values.get("stop_loss_max", ""))
+            if sl_min <= sl_max:
+                config["sl_range"] = (sl_min, sl_max)
+        except:
+            pass
+    
+    # ============================================================
+    # BREAK EVEN (Velas para BE)
+    # ============================================================
+    if values.get("activar_stop_be", False) or values.get("auto_stop_be", False):
+        try:
+            be_min = int(values.get("velas_para_be_min", ""))
+            be_max = int(values.get("velas_para_be_max", ""))
+            if be_min <= be_max:
+                config["be_range"] = (be_min, be_max)
+        except:
+            pass
+    
+    # ============================================================
+    # TAKE PROFIT LONG
+    # ============================================================
+    if values.get("use_take_profit_long", False) or values.get("auto_tp_long", False):
+        try:
+            tp_long_min = float(values.get("tp_long_min", ""))
+            tp_long_max = float(values.get("tp_long_max", ""))
+            if tp_long_min <= tp_long_max:
+                config["tp_long_range"] = (tp_long_min, tp_long_max)
+        except:
+            pass
+    
+    # ============================================================
+    # TAKE PROFIT SHORT
+    # ============================================================
+    if values.get("use_take_profit_short", False) or values.get("auto_tp_short", False):
+        try:
+            tp_short_min = float(values.get("tp_short_min", ""))
+            tp_short_max = float(values.get("tp_short_max", ""))
+            if tp_short_min <= tp_short_max:
+                config["tp_short_range"] = (tp_short_min, tp_short_max)
+        except:
+            pass
+    
+    # ============================================================
+    # COOLDOWN
+    # ============================================================
+    if values.get("enable_cooldown", False) or values.get("auto_cooldown", False):
+        try:
+            mls_min = int(values.get("max_losing_streak_min", ""))
+            mls_max = int(values.get("max_losing_streak_max", ""))
+            if mls_min <= mls_max:
+                config["mls_range"] = (mls_min, mls_max)
+        except:
+            pass
+        
+        try:
+            cool_min = int(values.get("cooldown_bars_min", ""))
+            cool_max = int(values.get("cooldown_bars_max", ""))
+            if cool_min <= cool_max:
+                config["cool_range"] = (cool_min, cool_max)
+        except:
+            pass
+    
+    # ============================================================
+    # REENTRY
+    # ============================================================
+    if values.get("enable_reentry", False) or values.get("auto_reentry", False):
+        try:
+            re_min = int(values.get("max_reentries_min", ""))
+            re_max = int(values.get("max_reentries_max", ""))
+            if re_min <= re_max:
+                config["re_range"] = (re_min, re_max)
+        except:
+            pass
+    
+    # ============================================================
+    # POST CROSSOVER ENTRY
+    # ============================================================
+    if values.get("enable_post_crossover_entry", False) or values.get("auto_post_crossover", False):
+        try:
+            postre_min = int(values.get("max_post_reentries_min", ""))
+            postre_max = int(values.get("max_post_reentries_max", ""))
+            if postre_min <= postre_max:
+                config["postre_range"] = (postre_min, postre_max)
+        except:
+            pass
+    
+    return config
 
-    return {
-        "tipos_ma": tipos_ma,
-        "ma1_min": int(values["ma1_min"]),
-        "ma1_max": int(values["ma1_max"]),
-        "ma2_min": int(values["ma2_min"]),
-        "ma2_max": int(values["ma2_max"]),
-        "rsi_length_range": get_range(values, "rsi_length_min", "rsi_length_max", 2, 50, int),
-        "rsi_min_range": get_range(values, "rsi_min_min", "rsi_min_max", 50.0, 80.0, float),
-        "rsi_max_range": get_range(values, "rsi_max_min", "rsi_max_max", 5.0, 50.0, float),
-        "adx_length_range": get_range(values, "adx_length_min", "adx_length_max", 2, 50, int),
-        "adx_thr_range": get_range(values, "adx_threshold_min", "adx_threshold_max", 5.0, 70.0, float),
-        "lookback_range": get_range(values, "lookback_min", "lookback_max", 1, 15, int),
-        "valwin_range": get_range(values, "validation_window_min", "validation_window_max", 1, 15, int),
-        "htf_length_range": get_range(values, "htf_length_min", "htf_length_max", 10, 60, int),
-        "sl_range": get_range(values, "stop_loss_min", "stop_loss_max", 0.3, 10.0, float),
-        "be_range": get_range(values, "velas_para_be_min", "velas_para_be_max", 1, 10, int),
-        "tp_long_range": get_range(values, "tp_long_min", "tp_long_max", 0.3, 99.0, float),
-        "tp_short_range": get_range(values, "tp_short_min", "tp_short_max", 0.3, 99.0, float),
-        "mls_range": get_range(values, "max_losing_streak_min", "max_losing_streak_max", 1, 4, int),
-        "cool_range": get_range(values, "cooldown_bars_min", "cooldown_bars_max", 10, 300, int),
-        "re_range": get_range(values, "max_reentries_min", "max_reentries_max", 1, 4, int),
-        "postre_range": get_range(values, "max_post_reentries_min", "max_post_reentries_max", 1, 4, int),
-    }
+
 
 
 def log_selected_parameters(values):
