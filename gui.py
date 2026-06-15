@@ -333,8 +333,8 @@ def validate_range(window, key_min, key_max, default_min, default_max, active):
         window[key_max].update(background_color=COLORS["invalid"])
         return
     
-    # Caso 5: min >= max → rojo
-    if vmin >= vmax:
+    # Caso 5: min > max → rojo
+    if vmin > vmax:
         window[key_min].update(background_color=COLORS["invalid"])
         window[key_max].update(background_color=COLORS["invalid"])
         return
