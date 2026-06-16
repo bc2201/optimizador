@@ -818,26 +818,33 @@ class OptimizadorAutomatico:
         lines.append("")
 
         # ========== RSI ==========
-        usar_rsi_long = best_params.get('usar_rsi_long', False)
-        usar_rsi_short = best_params.get('usar_rsi_short', False)
-        # Convertir a bool si vienen como int (1/0) y luego a string "True"/"False"
-        usar_rsi_long = bool(usar_rsi_long) if isinstance(usar_rsi_long, int) else usar_rsi_long
-        usar_rsi_short = bool(usar_rsi_short) if isinstance(usar_rsi_short, int) else usar_rsi_short
-        # Convertir a string para mostrar "True"/"False"
-        usar_rsi_long_str = "True" if usar_rsi_long else "False"
-        usar_rsi_short_str = "True" if usar_rsi_short else "False"
+        # Determinar valor real de RSI Long (booleano)
+        if self.features.get('use_rsi_long') == "auto":
+            usar_rsi_long = best_params.get('usar_rsi_long', False)
+            usar_rsi_long_str = f"Optuna: {usar_rsi_long}"
+        else:
+            usar_rsi_long = bool(self.gui_values.get('use_rsi_long', False))
+            usar_rsi_long_str = "Fijo ON" if usar_rsi_long else "Fijo OFF"
+
+        # Determinar valor real de RSI Short (booleano)
+        if self.features.get('use_rsi_short') == "auto":
+            usar_rsi_short = best_params.get('usar_rsi_short', False)
+            usar_rsi_short_str = f"Optuna: {usar_rsi_short}"
+        else:
+            usar_rsi_short = bool(self.gui_values.get('use_rsi_short', False))
+            usar_rsi_short_str = "Fijo ON" if usar_rsi_short else "Fijo OFF"
+
+        preset_rsi_long = "AUTO" if self.features.get('use_rsi_long') == "auto" else ("ON" if self.gui_values.get('use_rsi_long') else "OFF")
+        preset_rsi_short = "AUTO" if self.features.get('use_rsi_short') == "auto" else ("ON" if self.gui_values.get('use_rsi_short') else "OFF")
 
         rsi_length = best_params.get('rsi_length', 'N/A')
         rsi_min = best_params.get('rsi_min', 'N/A')
         rsi_max = best_params.get('rsi_max', 'N/A')
 
-        preset_rsi_long = "AUTO" if self.features.get('use_rsi_long') == "auto" else ("ON" if self.gui_values.get('use_rsi_long') else "OFF")
-        preset_rsi_short = "AUTO" if self.features.get('use_rsi_short') == "auto" else ("ON" if self.gui_values.get('use_rsi_short') else "OFF")
-
         lines.append("| Tendencia (RSI)                                                |")
         lines.append("+-----------------+------------------------------+---------------+")
-        lines.append(f"| RSI Long        | {preset_rsi_long:<28} | Optuna: {usar_rsi_long_str:<12} |")
-        lines.append(f"| RSI Short       | {preset_rsi_short:<28} | Optuna: {usar_rsi_short_str:<12} |")
+        lines.append(f"| RSI Long        | {preset_rsi_long:<28} | {usar_rsi_long_str:<12} |")
+        lines.append(f"| RSI Short       | {preset_rsi_short:<28} | {usar_rsi_short_str:<12} |")
         rsi_len_range = self.config_base.get('rsi_length_range', ('N/A','N/A'))
         lines.append(f"| RSI Length      | AUTO (min: {rsi_len_range[0]} | max: {rsi_len_range[1]})      | {rsi_length:<13} |")
         rsi_min_range = self.config_base.get('rsi_min_range', ('N/A','N/A'))
@@ -848,13 +855,16 @@ class OptimizadorAutomatico:
         lines.append("")
 
         # ========== ADX ==========
-        usar_adx = best_params.get('usar_adx', False)
-        usar_adx = bool(usar_adx) if isinstance(usar_adx, int) else usar_adx
-        adx_length = best_params.get('adx_length', 'N/A')
-        adx_threshold = best_params.get('adx_threshold', 'N/A')
+        if self.features.get('use_adx_filter') == "auto":
+            usar_adx = best_params.get('usar_adx', False)
+            opt_adx = f"Optuna: {usar_adx}"
+        else:
+            valor_fijo = bool(self.gui_values.get('use_adx_filter', False))
+            opt_adx = "Fijo ON" if valor_fijo else "Fijo OFF"
 
         preset_adx = "AUTO" if self.features.get('use_adx_filter') == "auto" else ("ON" if self.gui_values.get('use_adx_filter') else "OFF")
-        opt_adx = f"Optuna: {usar_adx}" if preset_adx == "AUTO" else ("Fijo ON" if usar_adx else "Fijo OFF")
+        adx_length = best_params.get('adx_length', 'N/A')
+        adx_threshold = best_params.get('adx_threshold', 'N/A')
 
         lines.append("| ADX                                                 |")
         lines.append("+------------+------------------------------+---------+")
@@ -867,18 +877,29 @@ class OptimizadorAutomatico:
         lines.append("")
 
         # ========== Condiciones de Precio ==========
-        usar_high = best_params.get('usar_high', True)
-        usar_low = best_params.get('usar_low', True)
-        usar_high = bool(usar_high) if isinstance(usar_high, int) else usar_high
-        usar_low = bool(usar_low) if isinstance(usar_low, int) else usar_low
+        for feature_key, param_key, label in [
+            ('enable_high_condition', 'usar_high', 'High Condition'),
+            ('enable_low_condition', 'usar_low', 'Low Condition')
+        ]:
+            if self.features.get(feature_key) == "auto":
+                valor = best_params.get(param_key, False)
+                opt_str = f"Optuna: {valor}"
+            else:
+                valor_fijo = bool(self.gui_values.get(feature_key, False))
+                opt_str = "Fijo ON" if valor_fijo else "Fijo OFF"
+            preset = "AUTO" if self.features.get(feature_key) == "auto" else ("ON" if self.gui_values.get(feature_key) else "OFF")
+            if feature_key == 'enable_high_condition':
+                preset_high = preset
+                opt_high = opt_str
+            else:
+                preset_low = preset
+                opt_low = opt_str
+
+        usar_high = best_params.get('usar_high', True) if self.features.get('enable_high_condition') == "auto" else bool(self.gui_values.get('enable_high_condition', True))
+        usar_low = best_params.get('usar_low', True) if self.features.get('enable_low_condition') == "auto" else bool(self.gui_values.get('enable_low_condition', True))
         lookback = best_params.get('lookback', 'N/A')
         validation_window = best_params.get('validation_window', 'N/A')
         usar_valwin = self.features.get('use_validation_window', False)
-
-        preset_high = "AUTO" if self.features.get('enable_high_condition') == "auto" else ("ON" if self.gui_values.get('enable_high_condition') else "OFF")
-        preset_low = "AUTO" if self.features.get('enable_low_condition') == "auto" else ("ON" if self.gui_values.get('enable_low_condition') else "OFF")
-        opt_high = f"Optuna: {usar_high}" if preset_high == "AUTO" else ("Fijo ON" if usar_high else "Fijo OFF")
-        opt_low = f"Optuna: {usar_low}" if preset_low == "AUTO" else ("Fijo ON" if usar_low else "Fijo OFF")
 
         lines.append("| Condiciones de Precio                                  |")
         lines.append("+--------------------+-------------------------+---------+")
@@ -886,6 +907,8 @@ class OptimizadorAutomatico:
         lines.append(f"| Low Condition      | {preset_low:<23} | {opt_low:<7} |")
         lb_range = self.config_base.get('lookback_range', ('N/A','N/A'))
         lines.append(f"| Lookback           | AUTO (min: {lb_range[0]} | max: {lb_range[1]})      | {lookback:<7} |")
+        
+        
         # Validation Window
         if usar_valwin:
             preset_valwin = "AUTO" if self.features.get('use_validation_window') == "auto" else "ON"
@@ -899,12 +922,16 @@ class OptimizadorAutomatico:
         lines.append("+--------------------+-------------------------+---------+")
         lines.append("")
 
+
         # ========== HTF Filter ==========
-        usar_htf = best_params.get('usar_htf', False)
-        usar_htf = bool(usar_htf) if isinstance(usar_htf, int) else usar_htf
-        htf_length = best_params.get('htf_length', 'N/A')
+        if self.features.get('use_htf_filter') == "auto":
+            usar_htf = best_params.get('usar_htf', False)
+            opt_htf = f"Optuna: {usar_htf}"
+        else:
+            valor_fijo = bool(self.gui_values.get('use_htf_filter', False))
+            opt_htf = "Fijo ON" if valor_fijo else "Fijo OFF"
         preset_htf = "AUTO" if self.features.get('use_htf_filter') == "auto" else ("ON" if self.gui_values.get('use_htf_filter') else "OFF")
-        opt_htf = f"Optuna: {usar_htf}" if preset_htf == "AUTO" else ("Fijo ON" if usar_htf else "Fijo OFF")
+        htf_length = best_params.get('htf_length', 'N/A')
 
         lines.append("| HTF Filter                                       |")
         lines.append("+------------+--------------------------+----------+")
@@ -916,86 +943,82 @@ class OptimizadorAutomatico:
         lines.append("+------------+--------------------------+----------+")
         lines.append("")
 
+
         # ========== Gestión de Riesgo ==========
-        # Stop Loss
-        usar_sl = best_params.get('usar_sl', False)
-        usar_sl = bool(usar_sl) if isinstance(usar_sl, int) else usar_sl
-        stop_loss_pct = best_params.get('stop_loss_pct', 'N/A')
-        preset_sl = "AUTO" if self.features.get('use_stop_loss') == "auto" else ("ON" if self.gui_values.get('use_stop_loss') else "OFF")
-        opt_sl = f"Optuna: {usar_sl}" if preset_sl == "AUTO" else ("Fijo ON" if usar_sl else "Fijo OFF")
+        gest_riesgo = [
+            ('use_stop_loss', 'usar_sl', 'Stop Loss'),
+            ('activar_stop_be', 'usar_be', 'Break Even'),
+            ('use_take_profit_long', 'usar_tp_long', 'Take Profit Long'),
+            ('use_take_profit_short', 'usar_tp_short', 'Take Profit Short')
+        ]
+        gest_vals = {}
+        for feat_key, param_key, label in gest_riesgo:
+            if self.features.get(feat_key) == "auto":
+                valor = best_params.get(param_key, False)
+                opt_str = f"Optuna: {valor}"
+            else:
+                valor_fijo = bool(self.gui_values.get(feat_key, False))
+                opt_str = "Fijo ON" if valor_fijo else "Fijo OFF"
+            preset = "AUTO" if self.features.get(feat_key) == "auto" else ("ON" if self.gui_values.get(feat_key) else "OFF")
+            gest_vals[label] = (preset, opt_str)
 
-        # Break Even
-        usar_be = best_params.get('usar_be', False)
-        usar_be = bool(usar_be) if isinstance(usar_be, int) else usar_be
-        velas_para_be = best_params.get('velas_para_be', 'N/A')
-        preset_be = "AUTO" if self.features.get('activar_stop_be') == "auto" else ("ON" if self.gui_values.get('activar_stop_be') else "OFF")
-        opt_be = f"Optuna: {usar_be}" if preset_be == "AUTO" else ("Fijo ON" if usar_be else "Fijo OFF")
-
-        # Take Profit Long
-        usar_tp_long = best_params.get('usar_tp_long', False)
-        usar_tp_long = bool(usar_tp_long) if isinstance(usar_tp_long, int) else usar_tp_long
-        tp_long_pct = best_params.get('tp_long_pct', 'N/A')
-        preset_tp_long = "AUTO" if self.features.get('use_take_profit_long') == "auto" else ("ON" if self.gui_values.get('use_take_profit_long') else "OFF")
-        opt_tp_long = f"Optuna: {usar_tp_long}" if preset_tp_long == "AUTO" else ("Fijo ON" if usar_tp_long else "Fijo OFF")
-
-        # Take Profit Short
-        usar_tp_short = best_params.get('usar_tp_short', False)
-        usar_tp_short = bool(usar_tp_short) if isinstance(usar_tp_short, int) else usar_tp_short
-        tp_short_pct = best_params.get('tp_short_pct', 'N/A')
-        preset_tp_short = "AUTO" if self.features.get('use_take_profit_short') == "auto" else ("ON" if self.gui_values.get('use_take_profit_short') else "OFF")
-        opt_tp_short = f"Optuna: {usar_tp_short}" if preset_tp_short == "AUTO" else ("Fijo ON" if usar_tp_short else "Fijo OFF")
+        # Extraer valores numéricos
+        stop_loss_pct = best_params.get('stop_loss_pct', 'N/A') if self.features.get('use_stop_loss') == "auto" else (self.gui_values.get('stop_loss_pct', 'N/A'))
+        velas_para_be = best_params.get('velas_para_be', 'N/A') if self.features.get('activar_stop_be') == "auto" else (self.gui_values.get('velas_para_be', 'N/A'))
+        tp_long_pct = best_params.get('tp_long_pct', 'N/A') if self.features.get('use_take_profit_long') == "auto" else (self.gui_values.get('tp_long_pct', 'N/A'))
+        tp_short_pct = best_params.get('tp_short_pct', 'N/A') if self.features.get('use_take_profit_short') == "auto" else (self.gui_values.get('tp_short_pct', 'N/A'))
 
         lines.append("| Gestión de Riesgo                                                   |")
         lines.append("+-------------------+----------------------------+--------------------+")
-        lines.append(f"| Stop Loss         | {preset_sl:<26} | {opt_sl:<18} |")
+        lines.append(f"| Stop Loss         | {gest_vals['Stop Loss'][0]:<26} | {gest_vals['Stop Loss'][1]:<18} |")
         sl_range = self.config_base.get('sl_range', ('N/A','N/A'))
         lines.append(f"| SL %              | AUTO (min: {sl_range[0]} | max: {sl_range[1]})      | {stop_loss_pct:<18} |")
-        lines.append(f"| Break Even        | {preset_be:<26} | {opt_be:<18} |")
+        lines.append(f"| Break Even        | {gest_vals['Break Even'][0]:<26} | {gest_vals['Break Even'][1]:<18} |")
         be_range = self.config_base.get('be_range', ('N/A','N/A'))
         lines.append(f"| Velas para BE     | AUTO (min: {be_range[0]} | max: {be_range[1]})       | {velas_para_be:<18} |")
-        lines.append(f"| Take Profit Long  | {preset_tp_long:<26} | {opt_tp_long:<18} |")
+        lines.append(f"| Take Profit Long  | {gest_vals['Take Profit Long'][0]:<26} | {gest_vals['Take Profit Long'][1]:<18} |")
         tp_long_range = self.config_base.get('tp_long_range', ('N/A','N/A'))
         lines.append(f"| TP long %         | AUTO (min: {tp_long_range[0]} | max: {tp_long_range[1]}) | {tp_long_pct:<18} |")
-        lines.append(f"| Take Profit Short | {preset_tp_short:<26} | {opt_tp_short:<18} |")
+        lines.append(f"| Take Profit Short | {gest_vals['Take Profit Short'][0]:<26} | {gest_vals['Take Profit Short'][1]:<18} |")
         tp_short_range = self.config_base.get('tp_short_range', ('N/A','N/A'))
         lines.append(f"| TP short %        | AUTO (min: {tp_short_range[0]} | max: {tp_short_range[1]}) | {tp_short_pct:<18} |")
         lines.append("+-------------------+----------------------------+--------------------+")
         lines.append("")
 
+        
         # ========== Gestión Operaciones ==========
-        # Cooldown
-        usar_cooldown = best_params.get('usar_cooldown', False)
-        usar_cooldown = bool(usar_cooldown) if isinstance(usar_cooldown, int) else usar_cooldown
-        max_losing_streak = best_params.get('max_losing_streak', 'N/A')
-        cooldown_bars = best_params.get('cooldown_bars', 'N/A')
-        preset_cool = "AUTO" if self.features.get('enable_cooldown') == "auto" else ("ON" if self.gui_values.get('enable_cooldown') else "OFF")
-        opt_cool = f"Optuna: {usar_cooldown}" if preset_cool == "AUTO" else ("Fijo ON" if usar_cooldown else "Fijo OFF")
+        gest_op = [
+            ('enable_cooldown', 'usar_cooldown', 'Cooldown'),
+            ('enable_reentry', 'usar_reentry', 'Reentry'),
+            ('enable_post_crossover_entry', 'usar_post_re', 'Post Crossover Entry')
+        ]
+        gest_op_vals = {}
+        for feat_key, param_key, label in gest_op:
+            if self.features.get(feat_key) == "auto":
+                valor = best_params.get(param_key, False)
+                opt_str = f"Optuna: {valor}"
+            else:
+                valor_fijo = bool(self.gui_values.get(feat_key, False))
+                opt_str = "Fijo ON" if valor_fijo else "Fijo OFF"
+            preset = "AUTO" if self.features.get(feat_key) == "auto" else ("ON" if self.gui_values.get(feat_key) else "OFF")
+            gest_op_vals[label] = (preset, opt_str)
 
-        # Reentry
-        usar_reentry = best_params.get('usar_reentry', False)
-        usar_reentry = bool(usar_reentry) if isinstance(usar_reentry, int) else usar_reentry
-        max_reentries = best_params.get('max_reentries_allowed', 'N/A')
-        preset_re = "AUTO" if self.features.get('enable_reentry') == "auto" else ("ON" if self.gui_values.get('enable_reentry') else "OFF")
-        opt_re = f"Optuna: {usar_reentry}" if preset_re == "AUTO" else ("Fijo ON" if usar_reentry else "Fijo OFF")
-
-        # Post Crossover Entry
-        usar_post_re = best_params.get('usar_post_re', False)
-        usar_post_re = bool(usar_post_re) if isinstance(usar_post_re, int) else usar_post_re
-        max_post_reentries = best_params.get('max_post_reentries', 'N/A')
-        preset_post = "AUTO" if self.features.get('enable_post_crossover_entry') == "auto" else ("ON" if self.gui_values.get('enable_post_crossover_entry') else "OFF")
-        opt_post = f"Optuna: {usar_post_re}" if preset_post == "AUTO" else ("Fijo ON" if usar_post_re else "Fijo OFF")
+        max_losing_streak = best_params.get('max_losing_streak', 'N/A') if self.features.get('enable_cooldown') == "auto" else (self.gui_values.get('max_losing_streak', 'N/A'))
+        cooldown_bars = best_params.get('cooldown_bars', 'N/A') if self.features.get('enable_cooldown') == "auto" else (self.gui_values.get('cooldown_bars', 'N/A'))
+        max_reentries = best_params.get('max_reentries_allowed', 'N/A') if self.features.get('enable_reentry') == "auto" else (self.gui_values.get('max_reentries_allowed', 'N/A'))
+        max_post_reentries = best_params.get('max_post_reentries', 'N/A') if self.features.get('enable_post_crossover_entry') == "auto" else (self.gui_values.get('max_post_reentries', 'N/A'))
 
         lines.append("| Gestión Operaciones                                         |")
         lines.append("+----------------------+---------------------------+----------+")
-        lines.append(f"| Cooldown             | {preset_cool:<25} | {opt_cool:<8} |")
+        lines.append(f"| Cooldown             | {gest_op_vals['Cooldown'][0]:<25} | {gest_op_vals['Cooldown'][1]:<8} |")
         mls_range = self.config_base.get('mls_range', ('N/A','N/A'))
         lines.append(f"| Max Losing streak    | AUTO (min: {mls_range[0]} | max: {mls_range[1]})      | {max_losing_streak:<8} |")
         cool_range = self.config_base.get('cool_range', ('N/A','N/A'))
         lines.append(f"| Cooldown bars        | AUTO (min: {cool_range[0]} | max: {cool_range[1]})     | {cooldown_bars:<8} |")
-        lines.append(f"| Reentry              | {preset_re:<25} | {opt_re:<8} |")
+        lines.append(f"| Reentry              | {gest_op_vals['Reentry'][0]:<25} | {gest_op_vals['Reentry'][1]:<8} |")
         re_range = self.config_base.get('re_range', ('N/A','N/A'))
         lines.append(f"| Max reentries        | AUTO (min: {re_range[0]} | max: {re_range[1]})      | {max_reentries:<8} |")
-        lines.append(f"| Post Crossover Entry | {preset_post:<25} | {opt_post:<8} |")
+        lines.append(f"| Post Crossover Entry | {gest_op_vals['Post Crossover Entry'][0]:<25} | {gest_op_vals['Post Crossover Entry'][1]:<8} |")
         postre_range = self.config_base.get('postre_range', ('N/A','N/A'))
         lines.append(f"| Max post reentries   | AUTO (min: {postre_range[0]} | max: {postre_range[1]})      | {max_post_reentries:<8} |")
         lines.append("+----------------------+---------------------------+----------+")
