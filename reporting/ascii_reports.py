@@ -38,95 +38,83 @@ def build_ascii_table(rows, title=None):
     return "\n".join(lines)
 
 
-def _bool_mode(values, best_params, key_flag, key_auto):
-    """
-    Devuelve (preset_str, optuna_str) para features booleanos.
-    Ahora con soporte para leer el valor real de best_params.
-    """
-    auto = values.get(key_auto, False)
-    base_on = bool(values.get(key_flag, False))
+def _bool_mode(gui_values, features, best_params, key_flag, key_auto):
+    auto = gui_values.get(key_auto, False)
+    # Fallback usando el diccionario features si existe
+    if not auto and features:
+        auto = features.get(key_flag) == "auto"
+    base_on = bool(gui_values.get(key_flag, False))
 
     if auto:
         preset = "AUTO"
-        # Buscar el valor real que Optuna usó en best_params
-        # Las claves en best_params pueden ser "usar_rsi_long", "usar_adx", etc.
-        param_name = None
-        if key_flag == "use_rsi_long":
-            param_name = "usar_rsi_long"
-        elif key_flag == "use_rsi_short":
-            param_name = "usar_rsi_short"
-        elif key_flag == "use_adx_filter":
-            param_name = "usar_adx"
-        elif key_flag == "enable_high_condition":
-            param_name = "usar_high"
-        elif key_flag == "enable_low_condition":
-            param_name = "usar_low"
-        elif key_flag == "use_htf_filter":
-            param_name = "usar_htf"
-        elif key_flag == "use_stop_loss":
-            param_name = "usar_sl"
-        elif key_flag == "activar_stop_be":
-            param_name = "usar_be"
-        elif key_flag == "use_take_profit_long":
-            param_name = "usar_tp_long"
-        elif key_flag == "use_take_profit_short":
-            param_name = "usar_tp_short"
-        elif key_flag == "enable_cooldown":
-            param_name = "usar_cooldown"
-        elif key_flag == "enable_reentry":
-            param_name = "usar_reentry"
-        elif key_flag == "enable_post_crossover_entry":
-            param_name = "usar_post_re"
-        
+        # Mapeo de clave de feature a clave en best_params
+        param_map = {
+            "use_rsi_long": "usar_rsi_long",
+            "use_rsi_short": "usar_rsi_short",
+            "use_adx_filter": "usar_adx",
+            "enable_high_condition": "usar_high",
+            "enable_low_condition": "usar_low",
+            "use_htf_filter": "usar_htf",
+            "use_stop_loss": "usar_sl",
+            "activar_stop_be": "usar_be",
+            "use_take_profit_long": "usar_tp_long",
+            "use_take_profit_short": "usar_tp_short",
+            "enable_cooldown": "usar_cooldown",
+            "enable_reentry": "usar_reentry",
+            "enable_post_crossover_entry": "usar_post_re",
+        }
+        param_name = param_map.get(key_flag)
         if param_name and param_name in best_params:
             opt_val = best_params[param_name]
+            # Convertir 1/0 a True/False
+            if opt_val in (1, 0):
+                opt_val = bool(opt_val)
             optuna = f"Optuna: {opt_val}"
         else:
             optuna = "Optuna: N/A"
     else:
         preset = "ON" if base_on else "OFF"
         optuna = "Fijo ON" if base_on else "Fijo OFF"
-
     return preset, optuna
 
 
 def _format_range_or_value(range_config, param_value):
     """
     Formatea un rango o valor para mostrar en el reporte.
-    
-    Args:
-        range_config: Tupla (min, max) o None
-        param_value: Valor que Optuna usó (puede ser None)
-    
-    Returns:
-        String con el formato adecuado
+    Nunca retorna None — siempre retorna un string.
     """
     # Caso 1: Tenemos el valor real de Optuna (no es None)
     if param_value is not None:
-        # Si es entero o float, formatear apropiadamente
         if isinstance(param_value, int):
             return f"{param_value}"
-        else:
+        elif isinstance(param_value, float):
             return f"{param_value:.1f}"
-    
+        else:
+            return str(param_value)
+
     # Caso 2: Tenemos rango configurado pero no valor
     if range_config is not None:
         min_val, max_val = range_config
         if min_val == max_val:
-            # Valor fijo
             if isinstance(min_val, int):
-                return f"{min_val}"
+                return f"{min_val} (fijo)"
             else:
-                return f"{min_val:.1f}"
+                return f"{min_val:.1f} (fijo)"
         else:
-            # Rango
             if isinstance(min_val, int):
                 return f"{min_val} | {max_val}"
             else:
                 return f"{min_val:.1f} | {max_val:.1f}"
-    
+
     # Caso 3: No hay nada
     return "N/A"
+
+
+def _safe(value, default="N/A"):
+    """Convierte cualquier valor a string de forma segura para usar en f-strings con format spec."""
+    if value is None:
+        return default
+    return str(value)
 
 
 def generar_reporte_ascii(values, config, best_params, equity_curve, trades, version_optimizador, search_space_info=None):
@@ -289,10 +277,10 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     # ===== MEDIAS MÓVILES SELECCIONADAS =====
     lines.append("| Medias móviles\t |")
     lines.append("+------------------+-----+")
-    lines.append(f"| MA1 -tipo\t   | {best_params.get('ma1_type', 'N/A'):<3} |")
-    lines.append(f"| MA1 -longitud\t   | {best_params.get('ma1_length', 'N/A'):<3} |")
-    lines.append(f"| MA2 -tipo\t   | {best_params.get('ma2_type', 'N/A'):<3} |")
-    lines.append(f"| MA2 -longitud\t   | {best_params.get('ma2_length', 'N/A'):<3} |")
+    lines.append(f"| MA1 -min\t   | {values.get('ma1_min', 'N/A'):<3} |")
+    lines.append(f"| MA1 -max\t   | {values.get('ma1_max', 'N/A'):<3} |")
+    lines.append(f"| MA2 -min\t   | {values.get('ma2_min', 'N/A'):<3} |")
+    lines.append(f"| MA2 -max\t   | {values.get('ma2_max', 'N/A'):<3} |")
     lines.append("+------------------+-----+")
     lines.append("")
     
@@ -336,23 +324,34 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     # ===== CONDICIONES DE PRECIO =====
     preset_high, opt_high = _bool_mode(values, best_params, "enable_high_condition", "auto_high_condition")
     preset_low, opt_low = _bool_mode(values, best_params, "enable_low_condition", "auto_low_condition")
-    
+
     lines.append("| Condiciones de Precio                                  |")
     lines.append("+--------------------+-------------------------+---------+")
     lines.append(f"| High Condition     | {preset_high:<23} | {opt_high:<7} |")
     lines.append(f"| Low Condition      | {preset_low:<23} | {opt_low:<7} |")
-    
+
     lookback_val = best_params.get('lookback', None)
-    lines.append(f"| Lookback           | AUTO ({_format_range_or_value(config.get('lookback_range'), lookback_val):<20}) | {_format_range_or_value(config.get('lookback_range'), lookback_val):<7} |")
-    
-    val_win_auto = "AUTO" if values.get("use_validation_window") else "OFF"
-    val_win_val = best_params.get('validation_window', None) if values.get("use_validation_window") else "Fijo OFF"
-    lines.append(f"| Validation Window  | {val_win_auto:<23} | {val_win_val:<7} |")
-    
+    lookback_range = config.get('lookback_range')
+    lines.append(f"| Lookback           | {_format_range_or_value(lookback_range, lookback_val):<27} | {_format_range_or_value(lookback_range, lookback_val):<7} |")
+
+    # VALIDATION WINDOW - CORREGIDO
+    use_valwin = values.get("use_validation_window", False)
+    auto_valwin = values.get("auto_validation_window", False)  # Si existe checkbox Auto
+
+    if auto_valwin:
+        preset_valwin = "AUTO"
+        valwin_val = best_params.get('validation_window', None)
+        opt_valwin = f"Optuna: {valwin_val}" if valwin_val is not None else "Optuna: N/A"
+    else:
+        preset_valwin = "ON" if use_valwin else "OFF"
+        opt_valwin = "Fijo ON" if use_valwin else "Fijo OFF"
+
+    lines.append(f"| Validation Window  | {preset_valwin:<23} | {opt_valwin:<7} |")
+
     valwin_val = best_params.get('validation_window', None)
-    lines.append(f"| Range (Val Window) | AUTO ({_format_range_or_value(config.get('valwin_range'), valwin_val):<20}) | {_format_range_or_value(config.get('valwin_range'), valwin_val):<7} |")
+    valwin_range = config.get('valwin_range')
+    lines.append(f"| Range (Val Window) | {_format_range_or_value(valwin_range, valwin_val):<27} | {_format_range_or_value(valwin_range, valwin_val):<7} |")
     lines.append("+--------------------+-------------------------+---------+")
-    lines.append("")
     
     # ===== HTF FILTER =====
     preset_htf, opt_htf = _bool_mode(values, best_params, "use_htf_filter", "auto_htf_filter")

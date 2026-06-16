@@ -835,7 +835,92 @@ def run_single_optuna(df, config, n_trials, modo_paralelo, features, stop_event=
 
     if not study.trials:
         return 0.0, {}
-    return study.best_value, study.best_params
+
+    best_params = dict(study.best_params)
+
+    # Enriquecer best_params con valores fijos (min==max) que Optuna no registra
+    # porque suggest_or_fixed los retorna directamente sin pasar por trial.suggest_*
+    best_params = _enrich_fixed_params(best_params, config, features)
+
+    return study.best_value, best_params
+
+
+def _enrich_fixed_params(best_params, config, features):
+    """
+    Agrega a best_params:
+    - Parámetros con min==max que Optuna no registró
+    - Parámetros booleanos de features en AUTO que Optuna decidió
+    """
+    enriched = dict(best_params)
+    
+    # MAPEO de features booleanos a sus claves en best_params
+    BOOL_MAP = {
+        "use_rsi_long": "usar_rsi_long",
+        "use_rsi_short": "usar_rsi_short", 
+        "use_adx_filter": "usar_adx",
+        "enable_high_condition": "usar_high",
+        "enable_low_condition": "usar_low",
+        "use_htf_filter": "usar_htf",
+        "use_stop_loss": "usar_sl",
+        "activar_stop_be": "usar_be",
+        "use_take_profit_long": "usar_tp_long",
+        "use_take_profit_short": "usar_tp_short",
+        "enable_cooldown": "usar_cooldown",
+        "enable_reentry": "usar_reentry",
+        "enable_post_crossover_entry": "usar_post_re",
+    }
+    
+    # Agregar valores booleanos desde features si están en AUTO y no existen
+    for feature_key, param_name in BOOL_MAP.items():
+        if param_name not in enriched and features.get(feature_key) == "auto":
+            # Si el feature está en AUTO pero no está en best_params,
+            # significa que Optuna no lo optimizó? Esto no debería pasar.
+            # Por ahora, asignamos False como fallback
+            enriched[param_name] = False
+    
+    # Agregar parámetros fijos (min==max)
+    def add_if_fixed(param_name, range_key, is_int=True):
+        if param_name in enriched:
+            return
+        r = config.get(range_key)
+        if r is not None and r[0] == r[1]:
+            enriched[param_name] = int(r[0]) if is_int else float(r[0])
+    
+    # MAs
+    add_if_fixed("ma1_length", "ma1_range", is_int=True)
+    add_if_fixed("ma2_length", "ma2_range", is_int=True)
+    
+    # RSI
+    add_if_fixed("rsi_length", "rsi_length_range", is_int=True)
+    add_if_fixed("rsi_min", "rsi_min_range", is_int=False)
+    add_if_fixed("rsi_max", "rsi_max_range", is_int=False)
+    
+    # ADX
+    add_if_fixed("adx_length", "adx_length_range", is_int=True)
+    add_if_fixed("adx_threshold", "adx_thr_range", is_int=False)
+    
+    # Lookback
+    add_if_fixed("lookback", "lookback_range", is_int=True)
+    add_if_fixed("validation_window", "valwin_range", is_int=True)
+    
+    # HTF
+    add_if_fixed("htf_length", "htf_length_range", is_int=True)
+    
+    # Gestión de riesgo
+    add_if_fixed("stop_loss_pct", "sl_range", is_int=False)
+    add_if_fixed("velas_para_be", "be_range", is_int=True)
+    add_if_fixed("tp_long_pct", "tp_long_range", is_int=False)
+    add_if_fixed("tp_short_pct", "tp_short_range", is_int=False)
+    
+    # Cooldown
+    add_if_fixed("max_losing_streak", "mls_range", is_int=True)
+    add_if_fixed("cooldown_bars", "cool_range", is_int=True)
+    
+    # Reentradas
+    add_if_fixed("max_reentries_allowed", "re_range", is_int=True)
+    add_if_fixed("max_post_reentries", "postre_range", is_int=True)
+    
+    return enriched
 
 
 
@@ -1349,30 +1434,44 @@ def run_optuna_with_gui(values, stop_event=None):
             "usar_post_re":   "enable_post_crossover_entry"
         }
 
-        cleaned_best_params = {}
+        # Diccionario para BACKTEST (solo claves traducidas)
+        params_for_backtest = {}
         for k, v in best_params.items():
             if k in MAPEO_AUTO_BACKTEST:
-                cleaned_best_params[MAPEO_AUTO_BACKTEST[k]] = v
+                params_for_backtest[MAPEO_AUTO_BACKTEST[k]] = v
             else:
-                cleaned_best_params[k] = v
+                params_for_backtest[k] = v
+
+        # Diccionario para REPORTE (claves originales)
+        params_for_report = best_params.copy()
 
         # Removemos las opciones que digan "auto"
         cleaned_features = {k: v for k, v in features.items() if v != "auto"}
 
-        # --- NUEVO: Backtest en TRAIN para obtener métricas de entrenamiento ---
-        pf_train_backtest, equity_curve_train, trades_train = run_backtest(df_train, **cleaned_best_params, **cleaned_features, **CONSTANTS)
+        # --- Backtest en TRAIN ---
+        pf_train_backtest, equity_curve_train, trades_train = run_backtest(
+            df_train, 
+            **params_for_backtest,
+            **cleaned_features, 
+            **CONSTANTS
+        )
 
         # Calcular métricas de TRAIN
         winrate_train = len([t for t in trades_train if t['net_pnl'] > 0]) / len(trades_train) * 100 if trades_train else 0
-        drawdown_train = calcular_drawdown_maximo(list(equity_curve_train))
+        drawdown_train = calcular_drawdown_maximo(list(equity_curve_train)) if len(equity_curve_train) > 0 else 0
         n_trades_train = len(trades_train)
 
-        # --- VALIDACIÓN FINAL sobre TEST ---
-        pf_oos, equity_curve_test, trades_test = run_backtest(df_test, **cleaned_best_params, **cleaned_features, **CONSTANTS)
+        # --- Backtest en TEST ---
+        pf_oos, equity_curve_test, trades_test = run_backtest(
+            df_test, 
+            **params_for_backtest,
+            **cleaned_features, 
+            **CONSTANTS
+        )
 
         # Calcular métricas de TEST
         winrate_test = len([t for t in trades_test if t['net_pnl'] > 0]) / len(trades_test) * 100 if trades_test else 0
-        drawdown_test = calcular_drawdown_maximo(list(equity_curve_test))
+        drawdown_test = calcular_drawdown_maximo(list(equity_curve_test)) if len(equity_curve_test) > 0 else 0
         n_trades_test = len(trades_test)
 
         resultados.append({
@@ -1384,11 +1483,12 @@ def run_optuna_with_gui(values, stop_event=None):
             "drawdown_test": drawdown_test,
             "trades_train": n_trades_train,
             "trades_test": n_trades_test,
-            "params": cleaned_best_params,
+            "params": params_for_report,
             "equity": equity_curve_test,
             "trades": trades_test,
             "is_oos": use_oos
         })
+
 
     # Guardia: si se canceló antes de completar alguna corrida
     if not resultados:
@@ -1413,12 +1513,23 @@ def run_optuna_with_gui(values, stop_event=None):
     # ============================================================
     # BACKTEST FINAL SOBRE DATOS COMPLETOS (df_full)
     # ============================================================
+
+    # --- Traducir best_params para backtest final ---
+    # best_params viene de params_for_report (contiene "usar_rsi_long", etc.)
+    # Necesitamos convertirlo a "use_rsi_long", "use_adx_filter", etc.
+    params_final_backtest = {}
+    for k, v in best_params.items():
+        if k in MAPEO_AUTO_BACKTEST:
+            params_final_backtest[MAPEO_AUTO_BACKTEST[k]] = v
+        else:
+            params_final_backtest[k] = v
+
     if use_oos:
         print("\n[INFO] Overfitting activado - Generando resultados finales sobre el total de datos...")
-        # Ejecutar backtest con los mejores parámetros sobre TODOS los datos
+        # Ejecutar backtest con los mejores parámetros traducidos sobre TODOS los datos
         pf_final, equity_curve_final, trades_final = run_backtest(
-            df_full,  # <-- DATOS COMPLETOS (1000 velas)
-            **best_params,
+            df_full,
+            **params_final_backtest,  # <--- AHORA USA LA VERSIÓN TRADUCIDA
             **cleaned_features,
             **CONSTANTS
         )

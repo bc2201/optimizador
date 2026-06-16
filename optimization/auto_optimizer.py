@@ -568,37 +568,30 @@ class OptimizadorAutomatico:
         """
         Genera un reporte TXT con el formato unificado para optimización automática.
         Incluye resumen por fase, tabla de métricas y validación IS/OOS.
-        
-        Args:
-            best_params: Mejores parámetros encontrados
-            resultado_final: Diccionario con resultados de la fase 3
-            trades_final: Lista de trades del backtest final (opcional)
-            equity_curve_final: Serie de equity del backtest final (opcional)
-            pf_final: Profit Factor final (opcional)
         """
         from datetime import datetime
         import os
         from backtest import calcular_drawdown_maximo
-        
+
         # Crear carpeta de reportes si no existe
         output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reportes")
         os.makedirs(output_dir, exist_ok=True)
-        
+
         # Generar timestamp y nombre de archivo
         timestamp = datetime.now().strftime("%Y.%m.%d-%H_%M")
         safe_symbol = self.symbol.replace("/", "_").replace(":", "_")
         filename = f"{timestamp} AutoOptim_{safe_symbol}_{self.timeframe}.txt"
         filepath = os.path.join(output_dir, filename)
-        
+
         now = datetime.now()
         fecha = now.strftime("%d/%m/%Y")
         hora = now.strftime("%H:%M")
-        
+
         # Extraer datos básicos
         symbol = self.symbol
         timeframe = self.timeframe
         velas = len(self.df)
-        
+
         # ============================================================
         # CALCULAR MÉTRICAS FINALES (si se pasaron los datos)
         # ============================================================
@@ -611,30 +604,30 @@ class OptimizadorAutomatico:
                     profit_factor = float("inf") if gross_profit > 0 else 0.0
                 else:
                     profit_factor = gross_profit / gross_loss
-                
+
                 initial_capital = equity_curve_final.iloc[0] if len(equity_curve_final) > 0 else 0.0
                 final_capital = equity_curve_final.iloc[-1] if len(equity_curve_final) > 0 else 0.0
                 total_return = ((final_capital / initial_capital) - 1.0) * 100.0 if initial_capital > 0 else 0.0
-                
+
                 wins = [t for t in trades_final if t["net_pnl"] > 0]
                 winrate = (len(wins) / n_trades) * 100.0
-                
+
                 max_dd = calcular_drawdown_maximo(list(equity_curve_final)) if len(equity_curve_final) > 0 else 0.0
-                
+
                 longs = [t for t in trades_final if t["dir"] == "LONG"]
                 shorts = [t for t in trades_final if t["dir"] == "SHORT"]
                 longs_total = len(longs)
                 shorts_total = len(shorts)
                 longs_win = len([t for t in longs if t["net_pnl"] > 0])
                 shorts_win = len([t for t in shorts if t["net_pnl"] > 0])
-                
+
                 if longs_total > 0:
                     cap0 = initial_capital
                     cap_long = cap0 + sum(t["net_pnl"] for t in longs)
                     longs_ret = ((cap_long / cap0) - 1.0) * 100.0
                 else:
                     longs_ret = 0.0
-                
+
                 if shorts_total > 0:
                     cap0 = initial_capital
                     cap_short = cap0 + sum(t["net_pnl"] for t in shorts)
@@ -658,15 +651,15 @@ class OptimizadorAutomatico:
             longs_total = shorts_total = longs_win = shorts_win = 0
             longs_ret = shorts_ret = 0.0
             n_trades = 0
-        
+
         best_score = resultado_final.get('best_score', 0)
         estabilidad = resultado_final.get('estabilidad', 0)
-        
+
         # ============================================================
         # CONSTRUIR REPORTE
         # ============================================================
         lines = []
-        
+
         # Encabezado principal
         lines.append("=" * 77)
         lines.append(f"🚀 OPTIMIZACIÓN AUTOMÁTICA\t|\tReporte de Optimización")
@@ -679,10 +672,8 @@ class OptimizadorAutomatico:
         lines.append(f"📊 Activo: {symbol}\t⏱️ Timeframe: {timeframe}\t📈 Velas: {velas}")
         lines.append("")
         lines.append("")
-        
-        # ============================================================
-        # ESTADÍSTICAS DEL MEJOR SETUP
-        # ============================================================
+
+        # Estadísticas del mejor setup encontrado
         lines.append("-" * 70)
         lines.append("Estadísticas del mejor setup encontrado")
         lines.append("-" * 70)
@@ -701,20 +692,19 @@ class OptimizadorAutomatico:
         lines.append(f"Estabilidad= {estabilidad * 100:.1f}%")
         lines.append("")
         lines.append("")
+
+        # Resumen por fase
         lines.append("-" * 80)
         lines.append("📋 RESUMEN POR FASE")
         lines.append("-" * 80)
         lines.append("")
-        
-        # ============================================================
-        # RESUMEN POR FASE (igual que antes)
-        # ============================================================
+
         for fase in self.historial:
             fase_num = fase.get('fase')
             nombre = fase.get('nombre', f'Fase {fase_num}')
             best_score_fase = fase.get('best_score', 0)
             num_params = len(fase.get('best_params', {}))
-            
+
             if fase_num == 1:
                 cfg = self.config_fases.get('fase_1', {})
                 modo = cfg.get('modo', 'paralelo')
@@ -742,24 +732,20 @@ class OptimizadorAutomatico:
                 modo_str = "Paralelo" if modo == "paralelo" else "Serie"
                 multi_str = "ON" if multi_run else "OFF"
                 lines.append(f"📌 {nombre} (Fase {fase_num}) - Modo {modo_str} - MultiRun {multi_str} - Corridas={corridas} - Trials={trials_por_corrida}")
-            
+
             lines.append(f"   • Mejor score: {best_score_fase:.4f}")
             lines.append(f"   • Parámetros: {num_params} ajustados")
             if 'estabilidad' in fase:
                 lines.append(f"   • Estabilidad: {fase['estabilidad'] * 100:.1f}%")
             lines.append("")
-        
-        # ============================================================
-        # MÉTRICAS POR FASE (igual que antes)
-        # ============================================================
+
+        # Métricas por fase
         lines.append("Métricas de Optimización Por Fase (Métrica - On-Off - Peso)")
         lines.append("+---------------------------------------------------------+")
         lines.append("\t\t\tFase 1\tFase 2\tFase 3")
-        
         m1 = self.config_metricas.get('fase_1', {})
         m2 = self.config_metricas.get('fase_2', {})
         m3 = self.config_metricas.get('fase_3', {})
-        
         lines.append(f"Profit Factor\t\t{m1.get('peso_pf', 60):.0f}%\t{m2.get('peso_pf', 40):.0f}%\t{m3.get('peso_pf', 35):.0f}%")
         lines.append(f"Winrate\t\t\t{m1.get('peso_winrate', 40):.0f}%\t{m2.get('peso_winrate', 30):.0f}%\t{m3.get('peso_winrate', 30):.0f}%")
         lines.append(f"Drawdown\t\t{m1.get('peso_drawdown', 0):.0f}%\t{m2.get('peso_drawdown', 20):.0f}%\t{m3.get('peso_drawdown', 35):.0f}%")
@@ -767,10 +753,8 @@ class OptimizadorAutomatico:
         lines.append(f"Min Trades\t\t{m1.get('min_trades', 15)}\t{m2.get('min_trades', 20)}\t{m3.get('min_trades', 30)}")
         lines.append("")
         lines.append("")
-        
-        # ============================================================
-        # DIRECCIÓN DE TRADES (igual que antes)
-        # ============================================================
+
+        # Dirección de trades
         lines.append("-" * 80)
         lines.append("⚙️ DIRECCIÓN DE TRADES")
         lines.append("-" * 80)
@@ -781,15 +765,15 @@ class OptimizadorAutomatico:
         lines.append(f"| Habilitar Shorts | {'ON' if self.features.get('enable_short_trades', True) else 'OFF':<3} |")
         lines.append("+------------------+-----+")
         lines.append("")
-        
+
         # ============================================================
-        # PRESET INICIAL vs FINAL (igual que antes)
+        # PRESET INICIAL vs FINAL
         # ============================================================
         lines.append("=" * 100)
         lines.append("PRESET INICIAL vs FINAL")
         lines.append("=" * 100)
         lines.append("")
-        
+
         # Medias móviles (rangos iniciales)
         lines.append("Medias móviles")
         lines.append("+------------------+-----+")
@@ -798,13 +782,13 @@ class OptimizadorAutomatico:
         lines.append(f"| WMA\t\t   | {'ON' if 'WMA' in self.config_base.get('tipos_ma', []) else 'OFF':<3} |")
         lines.append(f"| HMA\t\t   | {'ON' if 'HMA' in self.config_base.get('tipos_ma', []) else 'OFF':<3} |")
         lines.append(f"| DEMA\t\t   | {'ON' if 'DEMA' in self.config_base.get('tipos_ma', []) else 'OFF':<3} |")
-        lines.append(f"| MA1 -min\t   | {self.config_base.get('ma1_min', 'N/A'):<3} |")
-        lines.append(f"| MA1 -max\t   | {self.config_base.get('ma1_max', 'N/A'):<3} |")
-        lines.append(f"| MA2 -min\t   | {self.config_base.get('ma2_min', 'N/A'):<3} |")
-        lines.append(f"| MA2 -max\t   | {self.config_base.get('ma2_max', 'N/A'):<3} |")
+        lines.append(f"| MA1 -min\t   | {self.gui_values.get('ma1_min', 'N/A'):<3} |")
+        lines.append(f"| MA1 -max\t   | {self.gui_values.get('ma1_max', 'N/A'):<3} |")
+        lines.append(f"| MA2 -min\t   | {self.gui_values.get('ma2_min', 'N/A'):<3} |")
+        lines.append(f"| MA2 -max\t   | {self.gui_values.get('ma2_max', 'N/A'):<3} |")
         lines.append("+------------------+-----+")
         lines.append("")
-        
+
         # Medias móviles seleccionadas
         lines.append("Medias móviles Seleccionadas")
         lines.append("+------------------+-----+")
@@ -814,124 +798,189 @@ class OptimizadorAutomatico:
         lines.append(f"| MA2 -longitud\t   | {best_params.get('ma2_length', 'N/A'):<3} |")
         lines.append("+------------------+-----+")
         lines.append("")
-        
-        # RSI
+
+        # ========== RSI ==========
         usar_rsi_long = best_params.get('usar_rsi_long', False)
         usar_rsi_short = best_params.get('usar_rsi_short', False)
+        # Convertir a bool si vienen como int (1/0)
+        usar_rsi_long = bool(usar_rsi_long) if isinstance(usar_rsi_long, int) else usar_rsi_long
+        usar_rsi_short = bool(usar_rsi_short) if isinstance(usar_rsi_short, int) else usar_rsi_short
+
         rsi_length = best_params.get('rsi_length', 'N/A')
         rsi_min = best_params.get('rsi_min', 'N/A')
         rsi_max = best_params.get('rsi_max', 'N/A')
-        
+
+        preset_rsi_long = "AUTO" if self.features.get('use_rsi_long') == "auto" else ("ON" if self.gui_values.get('use_rsi_long') else "OFF")
+        preset_rsi_short = "AUTO" if self.features.get('use_rsi_short') == "auto" else ("ON" if self.gui_values.get('use_rsi_short') else "OFF")
+
         lines.append("| Tendencia (RSI)                                                |")
         lines.append("+-----------------+------------------------------+---------------+")
-        lines.append(f"| RSI Long        | AUTO                         | Optuna: {usar_rsi_long:<12} |")
-        lines.append(f"| RSI Short       | AUTO                         | Optuna: {usar_rsi_short:<12} |")
-        rsi_range = self.config_base.get('rsi_length_range', (8, 18))
-        lines.append(f"| RSI Length      | AUTO (min: {rsi_range[0]} | max: {rsi_range[1]})      | {rsi_length:<13} |")
-        rsi_min_range = self.config_base.get('rsi_min_range', (55, 65))
+        lines.append(f"| RSI Long        | {preset_rsi_long:<28} | Optuna: {usar_rsi_long:<12} |")
+        lines.append(f"| RSI Short       | {preset_rsi_short:<28} | Optuna: {usar_rsi_short:<12} |")
+        rsi_len_range = self.config_base.get('rsi_length_range', ('N/A','N/A'))
+        lines.append(f"| RSI Length      | AUTO (min: {rsi_len_range[0]} | max: {rsi_len_range[1]})      | {rsi_length:<13} |")
+        rsi_min_range = self.config_base.get('rsi_min_range', ('N/A','N/A'))
         lines.append(f"| RSI min (Long)  | AUTO (min: {rsi_min_range[0]} | max: {rsi_min_range[1]}) | {rsi_min if usar_rsi_long else 'N/A':<13} |")
-        rsi_max_range = self.config_base.get('rsi_max_range', (35, 45))
+        rsi_max_range = self.config_base.get('rsi_max_range', ('N/A','N/A'))
         lines.append(f"| RSI max (Short) | AUTO (min: {rsi_max_range[0]} | max: {rsi_max_range[1]}) | {rsi_max if usar_rsi_short else 'N/A':<13} |")
         lines.append("+-----------------+------------------------------+---------------+")
         lines.append("")
-        
-        # ADX
+
+        # ========== ADX ==========
         usar_adx = best_params.get('usar_adx', False)
+        usar_adx = bool(usar_adx) if isinstance(usar_adx, int) else usar_adx
         adx_length = best_params.get('adx_length', 'N/A')
         adx_threshold = best_params.get('adx_threshold', 'N/A')
-        
+
+        preset_adx = "AUTO" if self.features.get('use_adx_filter') == "auto" else ("ON" if self.gui_values.get('use_adx_filter') else "OFF")
+        opt_adx = f"Optuna: {usar_adx}" if preset_adx == "AUTO" else ("Fijo ON" if usar_adx else "Fijo OFF")
+
         lines.append("| ADX                                                 |")
         lines.append("+------------+------------------------------+---------+")
-        lines.append(f"| ADX        | {'ON' if usar_adx else 'OFF':<28} | {'Fijo ON' if usar_adx else 'Fijo OFF':<7} |")
-        adx_len_range = self.config_base.get('adx_length_range', (8, 18))
+        lines.append(f"| ADX        | {preset_adx:<28} | {opt_adx:<7} |")
+        adx_len_range = self.config_base.get('adx_length_range', ('N/A','N/A'))
         lines.append(f"| ADX Length | AUTO (min: {adx_len_range[0]} | max: {adx_len_range[1]})      | {adx_length:<7} |")
-        adx_thr_range = self.config_base.get('adx_thr_range', (15, 25))
+        adx_thr_range = self.config_base.get('adx_thr_range', ('N/A','N/A'))
         lines.append(f"| ADX Umbral | AUTO (min: {adx_thr_range[0]} | max: {adx_thr_range[1]})     | {adx_threshold:<7} |")
         lines.append("+------------+------------------------------+---------+")
         lines.append("")
-        
-        # Condiciones de Precio
+
+        # ========== Condiciones de Precio ==========
         usar_high = best_params.get('usar_high', True)
         usar_low = best_params.get('usar_low', True)
+        usar_high = bool(usar_high) if isinstance(usar_high, int) else usar_high
+        usar_low = bool(usar_low) if isinstance(usar_low, int) else usar_low
         lookback = best_params.get('lookback', 'N/A')
         validation_window = best_params.get('validation_window', 'N/A')
-        
+        usar_valwin = self.features.get('use_validation_window', False)
+
+        preset_high = "AUTO" if self.features.get('enable_high_condition') == "auto" else ("ON" if self.gui_values.get('enable_high_condition') else "OFF")
+        preset_low = "AUTO" if self.features.get('enable_low_condition') == "auto" else ("ON" if self.gui_values.get('enable_low_condition') else "OFF")
+        opt_high = f"Optuna: {usar_high}" if preset_high == "AUTO" else ("Fijo ON" if usar_high else "Fijo OFF")
+        opt_low = f"Optuna: {usar_low}" if preset_low == "AUTO" else ("Fijo ON" if usar_low else "Fijo OFF")
+
         lines.append("| Condiciones de Precio                                  |")
         lines.append("+--------------------+-------------------------+---------+")
-        lines.append(f"| High Condition     | {'ON' if usar_high else 'OFF':<23} | {'Fijo ON' if usar_high else 'Fijo OFF':<7} |")
-        lines.append(f"| Low Condition      | {'ON' if usar_low else 'OFF':<23} | {'Fijo ON' if usar_low else 'Fijo OFF':<7} |")
-        lb_range = self.config_base.get('lookback_range', (2, 10))
+        lines.append(f"| High Condition     | {preset_high:<23} | {opt_high:<7} |")
+        lines.append(f"| Low Condition      | {preset_low:<23} | {opt_low:<7} |")
+        lb_range = self.config_base.get('lookback_range', ('N/A','N/A'))
         lines.append(f"| Lookback           | AUTO (min: {lb_range[0]} | max: {lb_range[1]})      | {lookback:<7} |")
-        val_win_auto = "ON" if self.features.get('use_validation_window', True) else "OFF"
-        val_win_fijo = "Fijo ON" if self.features.get('use_validation_window', True) else "Fijo OFF"
-        lines.append(f"| Validation Window  | {val_win_auto:<23} | {val_win_fijo:<7} |")
-        vw_range = self.config_base.get('valwin_range', (5, 15))
+        # Validation Window
+        if usar_valwin:
+            preset_valwin = "AUTO" if self.features.get('use_validation_window') == "auto" else "ON"
+            opt_valwin = "Fijo ON" if preset_valwin == "ON" else f"Optuna: {validation_window}"
+        else:
+            preset_valwin = "OFF"
+            opt_valwin = "Fijo OFF"
+        lines.append(f"| Validation Window  | {preset_valwin:<23} | {opt_valwin:<7} |")
+        vw_range = self.config_base.get('valwin_range', ('N/A','N/A'))
         lines.append(f"| Range (Val Window) | AUTO (min: {vw_range[0]} | max: {vw_range[1]})      | {validation_window:<7} |")
         lines.append("+--------------------+-------------------------+---------+")
         lines.append("")
-        
-        # HTF Filter
+
+        # ========== HTF Filter ==========
         usar_htf = best_params.get('usar_htf', False)
+        usar_htf = bool(usar_htf) if isinstance(usar_htf, int) else usar_htf
+        htf_length = best_params.get('htf_length', 'N/A')
+        preset_htf = "AUTO" if self.features.get('use_htf_filter') == "auto" else ("ON" if self.gui_values.get('use_htf_filter') else "OFF")
+        opt_htf = f"Optuna: {usar_htf}" if preset_htf == "AUTO" else ("Fijo ON" if usar_htf else "Fijo OFF")
+
         lines.append("| HTF Filter                                       |")
         lines.append("+------------+--------------------------+----------+")
-        lines.append(f"| HTF Filter | {'ON' if usar_htf else 'OFF':<24} | {'Fijo ON' if usar_htf else 'Fijo OFF':<8} |")
+        lines.append(f"| HTF Filter | {preset_htf:<24} | {opt_htf:<8} |")
         lines.append("| Timeframe  | N/A                      | N/A      |")
         lines.append("| MA Type    | N/A                      | N/A      |")
-        htf_range = self.config_base.get('htf_length_range', (10, 60))
-        lines.append(f"| HTF Length | AUTO (min: {htf_range[0]} | max: {htf_range[1]})      | {best_params.get('htf_length', 'N/A'):<8} |")
+        htf_len_range = self.config_base.get('htf_length_range', ('N/A','N/A'))
+        lines.append(f"| HTF Length | AUTO (min: {htf_len_range[0]} | max: {htf_len_range[1]})      | {htf_length:<8} |")
         lines.append("+------------+--------------------------+----------+")
         lines.append("")
-        
-        # Gestión de Riesgo
+
+        # ========== Gestión de Riesgo ==========
+        # Stop Loss
         usar_sl = best_params.get('usar_sl', False)
+        usar_sl = bool(usar_sl) if isinstance(usar_sl, int) else usar_sl
+        stop_loss_pct = best_params.get('stop_loss_pct', 'N/A')
+        preset_sl = "AUTO" if self.features.get('use_stop_loss') == "auto" else ("ON" if self.gui_values.get('use_stop_loss') else "OFF")
+        opt_sl = f"Optuna: {usar_sl}" if preset_sl == "AUTO" else ("Fijo ON" if usar_sl else "Fijo OFF")
+
+        # Break Even
         usar_be = best_params.get('usar_be', False)
+        usar_be = bool(usar_be) if isinstance(usar_be, int) else usar_be
+        velas_para_be = best_params.get('velas_para_be', 'N/A')
+        preset_be = "AUTO" if self.features.get('activar_stop_be') == "auto" else ("ON" if self.gui_values.get('activar_stop_be') else "OFF")
+        opt_be = f"Optuna: {usar_be}" if preset_be == "AUTO" else ("Fijo ON" if usar_be else "Fijo OFF")
+
+        # Take Profit Long
         usar_tp_long = best_params.get('usar_tp_long', False)
-        usar_tp_short = best_params.get('usar_tp_short', False)
-        sl_pct = best_params.get('stop_loss_pct', 'N/A')
+        usar_tp_long = bool(usar_tp_long) if isinstance(usar_tp_long, int) else usar_tp_long
         tp_long_pct = best_params.get('tp_long_pct', 'N/A')
+        preset_tp_long = "AUTO" if self.features.get('use_take_profit_long') == "auto" else ("ON" if self.gui_values.get('use_take_profit_long') else "OFF")
+        opt_tp_long = f"Optuna: {usar_tp_long}" if preset_tp_long == "AUTO" else ("Fijo ON" if usar_tp_long else "Fijo OFF")
+
+        # Take Profit Short
+        usar_tp_short = best_params.get('usar_tp_short', False)
+        usar_tp_short = bool(usar_tp_short) if isinstance(usar_tp_short, int) else usar_tp_short
         tp_short_pct = best_params.get('tp_short_pct', 'N/A')
-        
+        preset_tp_short = "AUTO" if self.features.get('use_take_profit_short') == "auto" else ("ON" if self.gui_values.get('use_take_profit_short') else "OFF")
+        opt_tp_short = f"Optuna: {usar_tp_short}" if preset_tp_short == "AUTO" else ("Fijo ON" if usar_tp_short else "Fijo OFF")
+
         lines.append("| Gestión de Riesgo                                                   |")
         lines.append("+-------------------+----------------------------+--------------------+")
-        lines.append(f"| Stop Loss         | {'ON' if usar_sl else 'OFF':<26} | {'Fijo ON' if usar_sl else 'Fijo OFF':<18} |")
-        sl_range = self.config_base.get('sl_range', (0.3, 2.0))
-        lines.append(f"| SL %              | AUTO (min: {sl_range[0]} | max: {sl_range[1]})      | {sl_pct:<18} |")
-        lines.append(f"| Break Even        | {'ON' if usar_be else 'OFF':<26} | {'Fijo ON' if usar_be else 'Fijo OFF':<18} |")
-        be_range = self.config_base.get('be_range', (1, 10))
-        lines.append(f"| Velas para BE     | AUTO (min: {be_range[0]} | max: {be_range[1]})       | {best_params.get('velas_para_be', 'N/A'):<18} |")
-        lines.append(f"| Take Profit Long  | {'AUTO' if usar_tp_long else 'OFF':<26} | {'Optuna: True' if usar_tp_long else 'Fijo OFF':<18} |")
-        tp_long_range = self.config_base.get('tp_long_range', (0.5, 4.0))
+        lines.append(f"| Stop Loss         | {preset_sl:<26} | {opt_sl:<18} |")
+        sl_range = self.config_base.get('sl_range', ('N/A','N/A'))
+        lines.append(f"| SL %              | AUTO (min: {sl_range[0]} | max: {sl_range[1]})      | {stop_loss_pct:<18} |")
+        lines.append(f"| Break Even        | {preset_be:<26} | {opt_be:<18} |")
+        be_range = self.config_base.get('be_range', ('N/A','N/A'))
+        lines.append(f"| Velas para BE     | AUTO (min: {be_range[0]} | max: {be_range[1]})       | {velas_para_be:<18} |")
+        lines.append(f"| Take Profit Long  | {preset_tp_long:<26} | {opt_tp_long:<18} |")
+        tp_long_range = self.config_base.get('tp_long_range', ('N/A','N/A'))
         lines.append(f"| TP long %         | AUTO (min: {tp_long_range[0]} | max: {tp_long_range[1]}) | {tp_long_pct:<18} |")
-        lines.append(f"| Take Profit Short | {'AUTO' if usar_tp_short else 'OFF':<26} | {'Optuna: True' if usar_tp_short else 'Fijo OFF':<18} |")
-        tp_short_range = self.config_base.get('tp_short_range', (0.5, 4.0))
+        lines.append(f"| Take Profit Short | {preset_tp_short:<26} | {opt_tp_short:<18} |")
+        tp_short_range = self.config_base.get('tp_short_range', ('N/A','N/A'))
         lines.append(f"| TP short %        | AUTO (min: {tp_short_range[0]} | max: {tp_short_range[1]}) | {tp_short_pct:<18} |")
         lines.append("+-------------------+----------------------------+--------------------+")
         lines.append("")
-        
-        # Gestión Operaciones
+
+        # ========== Gestión Operaciones ==========
+        # Cooldown
         usar_cooldown = best_params.get('usar_cooldown', False)
+        usar_cooldown = bool(usar_cooldown) if isinstance(usar_cooldown, int) else usar_cooldown
+        max_losing_streak = best_params.get('max_losing_streak', 'N/A')
+        cooldown_bars = best_params.get('cooldown_bars', 'N/A')
+        preset_cool = "AUTO" if self.features.get('enable_cooldown') == "auto" else ("ON" if self.gui_values.get('enable_cooldown') else "OFF")
+        opt_cool = f"Optuna: {usar_cooldown}" if preset_cool == "AUTO" else ("Fijo ON" if usar_cooldown else "Fijo OFF")
+
+        # Reentry
         usar_reentry = best_params.get('usar_reentry', False)
+        usar_reentry = bool(usar_reentry) if isinstance(usar_reentry, int) else usar_reentry
+        max_reentries = best_params.get('max_reentries_allowed', 'N/A')
+        preset_re = "AUTO" if self.features.get('enable_reentry') == "auto" else ("ON" if self.gui_values.get('enable_reentry') else "OFF")
+        opt_re = f"Optuna: {usar_reentry}" if preset_re == "AUTO" else ("Fijo ON" if usar_reentry else "Fijo OFF")
+
+        # Post Crossover Entry
         usar_post_re = best_params.get('usar_post_re', False)
-        
+        usar_post_re = bool(usar_post_re) if isinstance(usar_post_re, int) else usar_post_re
+        max_post_reentries = best_params.get('max_post_reentries', 'N/A')
+        preset_post = "AUTO" if self.features.get('enable_post_crossover_entry') == "auto" else ("ON" if self.gui_values.get('enable_post_crossover_entry') else "OFF")
+        opt_post = f"Optuna: {usar_post_re}" if preset_post == "AUTO" else ("Fijo ON" if usar_post_re else "Fijo OFF")
+
         lines.append("| Gestión Operaciones                                         |")
         lines.append("+----------------------+---------------------------+----------+")
-        lines.append(f"| Cooldown             | {'ON' if usar_cooldown else 'OFF':<25} | {'Fijo ON' if usar_cooldown else 'Fijo OFF':<8} |")
-        mls_range = self.config_base.get('mls_range', (1, 4))
-        lines.append(f"| Max Losing streak    | AUTO (min: {mls_range[0]} | max: {mls_range[1]})      | {best_params.get('max_losing_streak', 'N/A'):<8} |")
-        cool_range = self.config_base.get('cool_range', (10, 100))
-        lines.append(f"| Cooldown bars        | AUTO (min: {cool_range[0]} | max: {cool_range[1]})     | {best_params.get('cooldown_bars', 'N/A'):<8} |")
-        lines.append(f"| Reentry              | {'ON' if usar_reentry else 'OFF':<25} | {'Fijo ON' if usar_reentry else 'Fijo OFF':<8} |")
-        re_range = self.config_base.get('re_range', (1, 4))
-        lines.append(f"| Max reentries        | AUTO (min: {re_range[0]} | max: {re_range[1]})      | {best_params.get('max_reentries_allowed', 'N/A'):<8} |")
-        lines.append(f"| Post Crossover Entry | {'ON' if usar_post_re else 'OFF':<25} | {'Fijo ON' if usar_post_re else 'Fijo OFF':<8} |")
-        postre_range = self.config_base.get('postre_range', (0, 3))
-        lines.append(f"| Max post reentries   | AUTO (min: {postre_range[0]} | max: {postre_range[1]})      | {best_params.get('max_post_reentries', 'N/A'):<8} |")
+        lines.append(f"| Cooldown             | {preset_cool:<25} | {opt_cool:<8} |")
+        mls_range = self.config_base.get('mls_range', ('N/A','N/A'))
+        lines.append(f"| Max Losing streak    | AUTO (min: {mls_range[0]} | max: {mls_range[1]})      | {max_losing_streak:<8} |")
+        cool_range = self.config_base.get('cool_range', ('N/A','N/A'))
+        lines.append(f"| Cooldown bars        | AUTO (min: {cool_range[0]} | max: {cool_range[1]})     | {cooldown_bars:<8} |")
+        lines.append(f"| Reentry              | {preset_re:<25} | {opt_re:<8} |")
+        re_range = self.config_base.get('re_range', ('N/A','N/A'))
+        lines.append(f"| Max reentries        | AUTO (min: {re_range[0]} | max: {re_range[1]})      | {max_reentries:<8} |")
+        lines.append(f"| Post Crossover Entry | {preset_post:<25} | {opt_post:<8} |")
+        postre_range = self.config_base.get('postre_range', ('N/A','N/A'))
+        lines.append(f"| Max post reentries   | AUTO (min: {postre_range[0]} | max: {postre_range[1]})      | {max_post_reentries:<8} |")
         lines.append("+----------------------+---------------------------+----------+")
         lines.append("")
-        
-        # ============================================================
-        # ESPACIO DE BÚSQUEDA
-        # ============================================================
+
+        # Espacio de búsqueda
         lines.append("=" * 100)
         lines.append("\t\t\tESPACIO DE BÚSQUEDA")
         lines.append("=" * 100)
@@ -943,16 +992,14 @@ class OptimizadorAutomatico:
         lines.append(f"Trials usados\t\t= {self.config_fases.get('fase_1', {}).get('trials', 'N/A')}")
         lines.append("")
         lines.append("")
-        
-        # ============================================================
-        # TABLA DE OVERFITTING (IS/OOS)
-        # ============================================================
+
+        # Tabla de overfitting (IS/OOS)
         fase3 = None
         for fase in self.historial:
             if fase.get('fase') == 3:
                 fase3 = fase
                 break
-        
+
         if fase3:
             pf_train = fase3.get('pf_train', 0)
             pf_test = fase3.get('pf_test', 0)
@@ -966,7 +1013,7 @@ class OptimizadorAutomatico:
             trades_train = fase3.get('trades_train', 0)
             trades_test = fase3.get('trades_test', 0)
             trades_final_val = n_trades
-            
+
             lines.append("=" * 100)
             lines.append("  📊 VALIDACIÓN IS/OOS - COMPARATIVA TRAIN vs TEST vs FINAL")
             lines.append("=" * 100)
@@ -978,7 +1025,7 @@ class OptimizadorAutomatico:
             lines.append(f"{'Drawdown Máx':<20} {drawdown_train:<17.2f}% {drawdown_test:<17.2f}% {drawdown_final:<17.2f}%")
             lines.append(f"{'N° Trades':<20} {trades_train:<18} {trades_test:<18} {trades_final_val:<18}")
             lines.append("-" * 80)
-            
+
             if pf_train > 0:
                 degradacion_pf = (1 - pf_test / pf_train) * 100
                 if degradacion_pf < 20:
@@ -989,21 +1036,19 @@ class OptimizadorAutomatico:
                     lines.append("\n❌ SOBREAJUSTE SEVERO: La estrategia no generaliza (>40% degradación).")
             lines.append("=" * 100)
             lines.append("")
-        
-        # ============================================================
-        # MENSAJE FINAL
-        # ============================================================
+
+        # Mensaje final
         lines.append("")
         lines.append("=" * 80)
         lines.append("🔧 Estrategia lista para usar en el optimizador manual")
         lines.append("   (Puedes cargar estos parámetros en el GUI)")
         lines.append("=" * 80)
-        
+
         # Guardar archivo
         reporte = "\n".join(lines)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(reporte)
-        
+
         print(f"\n📄 Reporte guardado en:\n  {filepath}")
 
     
