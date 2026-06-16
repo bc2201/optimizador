@@ -38,11 +38,11 @@ def build_ascii_table(rows, title=None):
     return "\n".join(lines)
 
 
-def _bool_mode(gui_values, features, best_params, key_flag, key_auto):
+def _bool_mode(gui_values, best_params, key_flag, key_auto):
+    """
+    Determina el modo (AUTO/ON/OFF) y el valor final de Optuna para un feature booleano.
+    """
     auto = gui_values.get(key_auto, False)
-    # Fallback usando el diccionario features si existe
-    if not auto and features:
-        auto = features.get(key_flag) == "auto"
     base_on = bool(gui_values.get(key_flag, False))
 
     if auto:

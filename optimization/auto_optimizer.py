@@ -50,6 +50,7 @@ class OptimizadorAutomatico:
         self.gui_values = gui_values if gui_values else {}
         self.df = df
         self.config_base = config_base.copy()
+        self.config_base_original = config_base.copy()   # <-- NUEVA LÍNEA
         self.features = features
         self.symbol = symbol
         self.timeframe = timeframe
@@ -111,88 +112,105 @@ class OptimizadorAutomatico:
     def _acotar_rangos(self, params_referencia):
         """
         Reduce los rangos de búsqueda alrededor de los parámetros encontrados.
-        Redondea los valores a 1 decimal para evitar warnings de Optuna.
+        Solo acota si el rango original era variable (min < max).
+        Los rangos fijos (min == max) se mantienen sin cambios.
         """
-        config_acotada = self.config_base.copy()
-        
-        # Acotar MA lengths (±30% alrededor del valor encontrado)
+        config_acotada = self.config_base_original.copy()  # Partir de la original
+
+        # Helper para saber si un rango es variable
+        def es_variable(rango):
+            return rango is not None and rango[0] < rango[1]
+
+        # Acotar MA lengths (solo si el rango original era variable)
         if "ma1_length" in params_referencia:
-            ma1 = params_referencia["ma1_length"]
-            config_acotada["ma1_min"] = max(2, int(ma1 * 0.7))
-            config_acotada["ma1_max"] = int(ma1 * 1.3)
-        
+            rango_orig = self.config_base_original.get("ma1_range")
+            if es_variable(rango_orig):
+                ma1 = params_referencia["ma1_length"]
+                nuevo_min = max(2, int(ma1 * 0.7))
+                nuevo_max = int(ma1 * 1.3)
+                # Validar que el nuevo rango sea válido (mín < máx)
+                if nuevo_min < nuevo_max:
+                    config_acotada["ma1_range"] = (nuevo_min, nuevo_max)
+
         if "ma2_length" in params_referencia:
-            ma2 = params_referencia["ma2_length"]
-            config_acotada["ma2_min"] = max(5, int(ma2 * 0.7))
-            config_acotada["ma2_max"] = int(ma2 * 1.3)
-        
-        # Acotar RSI si existe
+            rango_orig = self.config_base_original.get("ma2_range")
+            if es_variable(rango_orig):
+                ma2 = params_referencia["ma2_length"]
+                nuevo_min = max(5, int(ma2 * 0.7))
+                nuevo_max = int(ma2 * 1.3)
+                if nuevo_min < nuevo_max:
+                    config_acotada["ma2_range"] = (nuevo_min, nuevo_max)
+
+        # Acotar RSI length (si rango original variable)
         if "rsi_length" in params_referencia:
-            rsi = params_referencia["rsi_length"]
-            rango_actual = self.config_base.get("rsi_length_range", (2, 50))
-            nuevo_min = max(2, int(rsi * 0.7))
-            nuevo_max = min(rango_actual[1], int(rsi * 1.3))
-            if nuevo_min < nuevo_max:
-                config_acotada["rsi_length_range"] = (nuevo_min, nuevo_max)
-        
-        # ============================================================
-        # REDONDEAR RANGOS DECIMALES A MÚLTIPLOS DE 0.1
-        # ============================================================
-        
+            rango_orig = self.config_base_original.get("rsi_length_range")
+            if es_variable(rango_orig):
+                rsi = params_referencia["rsi_length"]
+                nuevo_min = max(2, int(rsi * 0.7))
+                nuevo_max = min(rango_orig[1], int(rsi * 1.3))
+                if nuevo_min < nuevo_max:
+                    config_acotada["rsi_length_range"] = (nuevo_min, nuevo_max)
+
         # Acotar stop loss (redondear a 1 decimal)
         if "stop_loss_pct" in params_referencia:
-            sl = params_referencia["stop_loss_pct"]
-            rango_actual = self.config_base.get("sl_range", (0.3, 10.0))
-            nuevo_min = round(max(0.3, sl * 0.7), 1)
-            nuevo_max = round(min(rango_actual[1], sl * 1.3), 1)
-            if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
-                config_acotada["sl_range"] = (nuevo_min, nuevo_max)
-        
-        # Acotar take profit long (redondear a 1 decimal)
+            rango_orig = self.config_base_original.get("sl_range")
+            if es_variable(rango_orig):
+                sl = params_referencia["stop_loss_pct"]
+                nuevo_min = round(max(0.3, sl * 0.7), 1)
+                nuevo_max = round(min(rango_orig[1], sl * 1.3), 1)
+                if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
+                    config_acotada["sl_range"] = (nuevo_min, nuevo_max)
+
+        # Acotar take profit long
         if "tp_long_pct" in params_referencia:
-            tp = params_referencia["tp_long_pct"]
-            rango_actual = self.config_base.get("tp_long_range", (0.3, 99.0))
-            nuevo_min = round(max(0.3, tp * 0.7), 1)
-            nuevo_max = round(min(rango_actual[1], tp * 1.3), 1)
-            if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
-                config_acotada["tp_long_range"] = (nuevo_min, nuevo_max)
-        
-        # Acotar take profit short (redondear a 1 decimal)
+            rango_orig = self.config_base_original.get("tp_long_range")
+            if es_variable(rango_orig):
+                tp = params_referencia["tp_long_pct"]
+                nuevo_min = round(max(0.3, tp * 0.7), 1)
+                nuevo_max = round(min(rango_orig[1], tp * 1.3), 1)
+                if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
+                    config_acotada["tp_long_range"] = (nuevo_min, nuevo_max)
+
+        # Acotar take profit short
         if "tp_short_pct" in params_referencia:
-            tp = params_referencia["tp_short_pct"]
-            rango_actual = self.config_base.get("tp_short_range", (0.3, 99.0))
-            nuevo_min = round(max(0.3, tp * 0.7), 1)
-            nuevo_max = round(min(rango_actual[1], tp * 1.3), 1)
-            if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
-                config_acotada["tp_short_range"] = (nuevo_min, nuevo_max)
-        
-        # Acotar ADX threshold (redondear a 1 decimal)
+            rango_orig = self.config_base_original.get("tp_short_range")
+            if es_variable(rango_orig):
+                tp = params_referencia["tp_short_pct"]
+                nuevo_min = round(max(0.3, tp * 0.7), 1)
+                nuevo_max = round(min(rango_orig[1], tp * 1.3), 1)
+                if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
+                    config_acotada["tp_short_range"] = (nuevo_min, nuevo_max)
+
+        # Acotar ADX threshold
         if "adx_threshold" in params_referencia:
-            adx = params_referencia["adx_threshold"]
-            rango_actual = self.config_base.get("adx_thr_range", (5.0, 70.0))
-            nuevo_min = round(max(5.0, adx * 0.7), 1)
-            nuevo_max = round(min(rango_actual[1], adx * 1.3), 1)
-            if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
-                config_acotada["adx_thr_range"] = (nuevo_min, nuevo_max)
-        
-        # Acotar RSI min (redondear a 1 decimal)
+            rango_orig = self.config_base_original.get("adx_thr_range")
+            if es_variable(rango_orig):
+                adx = params_referencia["adx_threshold"]
+                nuevo_min = round(max(5.0, adx * 0.7), 1)
+                nuevo_max = round(min(rango_orig[1], adx * 1.3), 1)
+                if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
+                    config_acotada["adx_thr_range"] = (nuevo_min, nuevo_max)
+
+        # Acotar RSI min
         if "rsi_min" in params_referencia:
-            rsi_min = params_referencia["rsi_min"]
-            rango_actual = self.config_base.get("rsi_min_range", (50.0, 80.0))
-            nuevo_min = round(max(50.0, rsi_min * 0.7), 1)
-            nuevo_max = round(min(rango_actual[1], rsi_min * 1.3), 1)
-            if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
-                config_acotada["rsi_min_range"] = (nuevo_min, nuevo_max)
-        
-        # Acotar RSI max (redondear a 1 decimal)
+            rango_orig = self.config_base_original.get("rsi_min_range")
+            if es_variable(rango_orig):
+                rsi_min = params_referencia["rsi_min"]
+                nuevo_min = round(max(50.0, rsi_min * 0.7), 1)
+                nuevo_max = round(min(rango_orig[1], rsi_min * 1.3), 1)
+                if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
+                    config_acotada["rsi_min_range"] = (nuevo_min, nuevo_max)
+
+        # Acotar RSI max
         if "rsi_max" in params_referencia:
-            rsi_max = params_referencia["rsi_max"]
-            rango_actual = self.config_base.get("rsi_max_range", (5.0, 50.0))
-            nuevo_min = round(max(5.0, rsi_max * 0.7), 1)
-            nuevo_max = round(min(rango_actual[1], rsi_max * 1.3), 1)
-            if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
-                config_acotada["rsi_max_range"] = (nuevo_min, nuevo_max)
-    
+            rango_orig = self.config_base_original.get("rsi_max_range")
+            if es_variable(rango_orig):
+                rsi_max = params_referencia["rsi_max"]
+                nuevo_min = round(max(5.0, rsi_max * 0.7), 1)
+                nuevo_max = round(min(rango_orig[1], rsi_max * 1.3), 1)
+                if nuevo_min < nuevo_max and (nuevo_max - nuevo_min) >= 0.1:
+                    config_acotada["rsi_max_range"] = (nuevo_min, nuevo_max)
+
         return config_acotada
     
     def _metrics_config_para_fase(self, fase):
@@ -802,9 +820,12 @@ class OptimizadorAutomatico:
         # ========== RSI ==========
         usar_rsi_long = best_params.get('usar_rsi_long', False)
         usar_rsi_short = best_params.get('usar_rsi_short', False)
-        # Convertir a bool si vienen como int (1/0)
+        # Convertir a bool si vienen como int (1/0) y luego a string "True"/"False"
         usar_rsi_long = bool(usar_rsi_long) if isinstance(usar_rsi_long, int) else usar_rsi_long
         usar_rsi_short = bool(usar_rsi_short) if isinstance(usar_rsi_short, int) else usar_rsi_short
+        # Convertir a string para mostrar "True"/"False"
+        usar_rsi_long_str = "True" if usar_rsi_long else "False"
+        usar_rsi_short_str = "True" if usar_rsi_short else "False"
 
         rsi_length = best_params.get('rsi_length', 'N/A')
         rsi_min = best_params.get('rsi_min', 'N/A')
@@ -815,8 +836,8 @@ class OptimizadorAutomatico:
 
         lines.append("| Tendencia (RSI)                                                |")
         lines.append("+-----------------+------------------------------+---------------+")
-        lines.append(f"| RSI Long        | {preset_rsi_long:<28} | Optuna: {usar_rsi_long:<12} |")
-        lines.append(f"| RSI Short       | {preset_rsi_short:<28} | Optuna: {usar_rsi_short:<12} |")
+        lines.append(f"| RSI Long        | {preset_rsi_long:<28} | Optuna: {usar_rsi_long_str:<12} |")
+        lines.append(f"| RSI Short       | {preset_rsi_short:<28} | Optuna: {usar_rsi_short_str:<12} |")
         rsi_len_range = self.config_base.get('rsi_length_range', ('N/A','N/A'))
         lines.append(f"| RSI Length      | AUTO (min: {rsi_len_range[0]} | max: {rsi_len_range[1]})      | {rsi_length:<13} |")
         rsi_min_range = self.config_base.get('rsi_min_range', ('N/A','N/A'))
