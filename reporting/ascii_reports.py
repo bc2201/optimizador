@@ -275,7 +275,15 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append("")
     
     # ===== MEDIAS MÓVILES SELECCIONADAS =====
-    lines.append("| Medias móviles\t |")
+    lines.append("Medias móviles Seleccionadas")
+    lines.append("+------------------+-----+")
+    lines.append(f"| MA1 -tipo\t   | {best_params.get('ma1_type', 'N/A'):<3} |")
+    lines.append(f"| MA1 -longitud\t   | {best_params.get('ma1_length', 'N/A'):<3} |")
+    lines.append(f"| MA2 -tipo\t   | {best_params.get('ma2_type', 'N/A'):<3} |")
+    lines.append(f"| MA2 -longitud\t   | {best_params.get('ma2_length', 'N/A'):<3} |")
+    lines.append("+------------------+-----+")
+    lines.append("")
+    lines.append("Rangos iniciales (GUI):")
     lines.append("+------------------+-----+")
     lines.append(f"| MA1 -min\t   | {values.get('ma1_min', 'N/A'):<3} |")
     lines.append(f"| MA1 -max\t   | {values.get('ma1_max', 'N/A'):<3} |")
@@ -284,26 +292,57 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append("+------------------+-----+")
     lines.append("")
     
+    
     # ===== RSI =====
     preset_rsi_long, opt_rsi_long = _bool_mode(values, best_params, "use_rsi_long", "auto_rsi_long")
     preset_rsi_short, opt_rsi_short = _bool_mode(values, best_params, "use_rsi_short", "auto_rsi_short")
-    
+
     lines.append("| Tendencia (RSI)                                                |")
     lines.append("+-----------------+------------------------------+---------------+")
     lines.append(f"| RSI Long        | {preset_rsi_long:<28} | {opt_rsi_long:<13} |")
     lines.append(f"| RSI Short       | {preset_rsi_short:<28} | {opt_rsi_short:<13} |")
-    
-    # RSI Length - mostrar valor real de Optuna
+
+    # RSI Length
+    rsi_length_range = config.get('rsi_length_range')
     rsi_length_val = best_params.get('rsi_length', None)
-    lines.append(f"| RSI Length      | AUTO ({_format_range_or_value(config.get('rsi_length_range'), rsi_length_val):<20}) | {_format_range_or_value(config.get('rsi_length_range'), rsi_length_val):<13} |")
-    
+    if rsi_length_range:
+        min_r, max_r = rsi_length_range
+        if min_r == max_r:
+            preset_display = f"{min_r} (fijo)"
+        else:
+            preset_display = f"{min_r} | {max_r}"
+    else:
+        preset_display = "N/A"
+    optuna_display = str(rsi_length_val) if rsi_length_val is not None else "N/A"
+    lines.append(f"| RSI Length      | AUTO ({preset_display:<20}) | {optuna_display:<13} |")
+
     # RSI min
+    rsi_min_range = config.get('rsi_min_range')
     rsi_min_val = best_params.get('rsi_min', None)
-    lines.append(f"| RSI min (Long)  | AUTO ({_format_range_or_value(config.get('rsi_min_range'), rsi_min_val):<20}) | {_format_range_or_value(config.get('rsi_min_range'), rsi_min_val):<13} |")
-    
+    if rsi_min_range:
+        min_r, max_r = rsi_min_range
+        if min_r == max_r:
+            preset_display = f"{min_r:.1f} (fijo)"
+        else:
+            preset_display = f"{min_r:.1f} | {max_r:.1f}"
+    else:
+        preset_display = "N/A"
+    optuna_display = f"{rsi_min_val:.1f}" if rsi_min_val is not None else "N/A"
+    lines.append(f"| RSI min (Long)  | AUTO ({preset_display:<20}) | {optuna_display:<13} |")
+
     # RSI max
+    rsi_max_range = config.get('rsi_max_range')
     rsi_max_val = best_params.get('rsi_max', None)
-    lines.append(f"| RSI max (Short) | AUTO ({_format_range_or_value(config.get('rsi_max_range'), rsi_max_val):<20}) | {_format_range_or_value(config.get('rsi_max_range'), rsi_max_val):<13} |")
+    if rsi_max_range:
+        min_r, max_r = rsi_max_range
+        if min_r == max_r:
+            preset_display = f"{min_r:.1f} (fijo)"
+        else:
+            preset_display = f"{min_r:.1f} | {max_r:.1f}"
+    else:
+        preset_display = "N/A"
+    optuna_display = f"{rsi_max_val:.1f}" if rsi_max_val is not None else "N/A"
+    lines.append(f"| RSI max (Short) | AUTO ({preset_display:<20}) | {optuna_display:<13} |")
     lines.append("+-----------------+------------------------------+---------------+")
     lines.append("")
     
@@ -312,12 +351,34 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
     lines.append("| ADX                                                 |")
     lines.append("+------------+------------------------------+---------+")
     lines.append(f"| ADX        | {preset_adx:<28} | {opt_adx:<7} |")
-    
+
+    # ADX Length
+    adx_len_range = config.get('adx_length_range')
     adx_len_val = best_params.get('adx_length', None)
-    lines.append(f"| ADX Length | AUTO ({_format_range_or_value(config.get('adx_length_range'), adx_len_val):<20}) | {_format_range_or_value(config.get('adx_length_range'), adx_len_val):<7} |")
-    
+    if adx_len_range:
+        min_r, max_r = adx_len_range
+        if min_r == max_r:
+            preset_display = f"{min_r} (fijo)"
+        else:
+            preset_display = f"{min_r} | {max_r}"
+    else:
+        preset_display = "N/A"
+    optuna_display = str(adx_len_val) if adx_len_val is not None else "N/A"
+    lines.append(f"| ADX Length | AUTO ({preset_display:<20}) | {optuna_display:<7} |")
+
+    # ADX Umbral
+    adx_thr_range = config.get('adx_thr_range')
     adx_thr_val = best_params.get('adx_threshold', None)
-    lines.append(f"| ADX Umbral | AUTO ({_format_range_or_value(config.get('adx_thr_range'), adx_thr_val):<20}) | {_format_range_or_value(config.get('adx_thr_range'), adx_thr_val):<7} |")
+    if adx_thr_range:
+        min_r, max_r = adx_thr_range
+        if min_r == max_r:
+            preset_display = f"{min_r:.1f} (fijo)"
+        else:
+            preset_display = f"{min_r:.1f} | {max_r:.1f}"
+    else:
+        preset_display = "N/A"
+    optuna_display = f"{adx_thr_val:.1f}" if adx_thr_val is not None else "N/A"
+    lines.append(f"| ADX Umbral | AUTO ({preset_display:<20}) | {optuna_display:<7} |")
     lines.append("+------------+------------------------------+---------+")
     lines.append("")
     
@@ -332,7 +393,16 @@ def generar_reporte_ascii(values, config, best_params, equity_curve, trades, ver
 
     lookback_val = best_params.get('lookback', None)
     lookback_range = config.get('lookback_range')
-    lines.append(f"| Lookback           | {_format_range_or_value(lookback_range, lookback_val):<27} | {_format_range_or_value(lookback_range, lookback_val):<7} |")
+    if lookback_range:
+        min_r, max_r = lookback_range
+        if min_r == max_r:
+            preset_display = f"{min_r} (fijo)"
+        else:
+            preset_display = f"{min_r} | {max_r}"
+    else:
+        preset_display = "N/A"
+    optuna_display = str(lookback_val) if lookback_val is not None else "N/A"
+    lines.append(f"| Lookback           | {preset_display:<27} | {optuna_display:<7} |")
 
     # VALIDATION WINDOW - CORREGIDO
     use_valwin = values.get("use_validation_window", False)
