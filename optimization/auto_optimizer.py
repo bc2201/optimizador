@@ -1074,6 +1074,36 @@ class OptimizadorAutomatico:
 
     
     
+    def _guardar_csv_trades(self, trades_final):
+        """
+        Guarda el listado de trades de la mejor corrida en CSV.
+        Mismo formato que el flujo manual.
+        """
+        if not trades_final:
+            self._log("\n[INFO] No se generaron trades, no se creó el CSV.")
+            return
+
+        try:
+            import pandas as pd
+            import os
+            from datetime import datetime
+
+            output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reportes")
+            os.makedirs(output_dir, exist_ok=True)
+
+            df_trades = pd.DataFrame(trades_final)
+
+            timestamp  = datetime.now().strftime("%Y.%m.%d-%H_%M")
+            safe_sym   = self.symbol.replace("/", "").replace(":", "")
+            csv_path   = os.path.join(output_dir, f"{timestamp} Trades_csv {safe_sym}_{self.timeframe}.csv")
+
+            df_trades.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+            self._log(f"\n[ÉXITO] CSV de trades generado:\n  {csv_path}")
+
+        except Exception as e:
+            self._log(f"\n[ERROR] No se pudo guardar el CSV de trades: {e}")
+
     def _guardar_seed(self, best_params, resultado_final):
         """
         Guarda un archivo JSON (seed) con toda la configuración y resultados.
@@ -1235,6 +1265,9 @@ class OptimizadorAutomatico:
             pf_final=pf_final
         )
         
+        # GUARDAR CSV DE TRADES (igual que en flujo manual)
+        self._guardar_csv_trades(trades_final)
+
         # GUARDAR SEED JSON
         self._guardar_seed(params_fase3, resultado_final)
         
