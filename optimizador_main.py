@@ -795,17 +795,9 @@ def run_single_optuna(df, config, n_trials, modo_paralelo, features, stop_event=
     """
     Ejecuta una instancia de optimización con Optuna.
     
-    Args:
-        df: DataFrame con datos históricos
-        config: Configuración de rangos desde GUI
-        n_trials: Cantidad de trials a ejecutar
-        modo_paralelo: True = paralelo (n_jobs=-1), False = serie
-        features: Diccionario de features (con valores True/False/"auto")
-        stop_event: Evento para cancelación desde GUI
-        metrics_config: Configuración de métricas para el score
-    
     Returns:
         Tuple (best_score, best_params)
+        Si no se encuentra ningún trial válido, retorna (0.0, {})
     """
     if metrics_config is None:
         metrics_config = {
@@ -836,13 +828,21 @@ def run_single_optuna(df, config, n_trials, modo_paralelo, features, stop_event=
     if not study.trials:
         return 0.0, {}
 
-    best_params = dict(study.best_params)
+    best_score = study.best_value if study.best_value is not None else 0.0
 
-    # Enriquecer best_params con valores fijos (min==max) que Optuna no registra
-    # porque suggest_or_fixed los retorna directamente sin pasar por trial.suggest_*
+    # CRÍTICO: Si best_score <= 0, NO hay parámetros válidos
+    if best_score <= 0:
+        return 0.0, {}
+
+    best_params = dict(study.best_params) if study.best_params else {}
+
+    if not best_params:
+        return 0.0, {}
+
+    # Enriquecer best_params con valores fijos (min==max)
     best_params = _enrich_fixed_params(best_params, config, features)
 
-    return study.best_value, best_params
+    return best_score, best_params
 
 
 def _enrich_fixed_params(best_params, config, features):

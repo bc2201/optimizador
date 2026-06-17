@@ -237,13 +237,13 @@ class OptimizadorAutomatico:
         
         metrics_config = self._metrics_config_para_fase(1)
     
-    # (Aquí mantienes el código existente de convergencia)
-    # Pero si multi_run está activado, deberías ejecutar múltiples estudios
-    # o agregar los resultados al historial apropiadamente
-    
-    # Por simplicidad inicial, la Fase 1 puede ignorar multi_run
-    # ya que la convergencia temprana es más relevante.
-    # Pero al menos guarda la configuración en el historial.
+        # (Aquí mantienes el código existente de convergencia)
+        # Pero si multi_run está activado, deberías ejecutar múltiples estudios
+        # o agregar los resultados al historial apropiadamente
+        
+        # Por simplicidad inicial, la Fase 1 puede ignorar multi_run
+        # ya que la convergencia temprana es más relevante.
+        # Pero al menos guarda la configuración en el historial.
         
         # ============================================================
         # OPTIMIZACIÓN CON O SIN CONVERGENCIA
@@ -315,6 +315,11 @@ class OptimizadorAutomatico:
             
             best_score = study.best_value if study.best_value else 0
             best_params = study.best_params if study.best_params else {}
+
+            if best_score <= 0 or not best_params:
+                self._log("   ⚠️ Convergencia temprana pero sin parámetros válidos.")
+                best_params = {}
+                best_score = 0
             
             trials_usados = trial_convergencia if convergencia_detectada else n_trials
             
@@ -325,7 +330,7 @@ class OptimizadorAutomatico:
             
         else:
             # Sin convergencia (método original)
-            pf, best_params = run_single_optuna(
+            best_score, best_params = run_single_optuna(
                 df=self.df,
                 config=self.config_base,
                 n_trials=n_trials,
@@ -333,8 +338,11 @@ class OptimizadorAutomatico:
                 features=self.features,
                 metrics_config=metrics_config
             )
-            best_score = pf
-            trials_usados = n_trials
+            # Si el mejor score es 0, no se encontraron parámetros válidos
+            if best_score <= 0 or not best_params:
+                self._log("   ⚠️ No se encontraron parámetros válidos (todos descartados por min_trades).")
+                best_params = {}
+                best_score = 0
         
         self.historial.append({
             "fase": 1,
@@ -386,7 +394,7 @@ class OptimizadorAutomatico:
         for run in range(runs):
             if multi_run:
                 self._log(f"\n   🔄 Corrida {run+1}/{runs}...")
-            
+
             pf, params = run_single_optuna(
                 df=self.df,
                 config=config_refinada,
@@ -395,9 +403,14 @@ class OptimizadorAutomatico:
                 features=self.features,
                 metrics_config=metrics_config
             )
-            
+
+            if pf <= 0 or not params:
+                if multi_run:
+                    self._log(f"      ⚠️ Corrida {run+1}: sin parámetros válidos")
+                continue
+
             resultados_refinamiento.append(pf)
-            
+
             if pf > mejor_score:
                 mejor_score = pf
                 mejores_params = params
@@ -431,31 +444,29 @@ class OptimizadorAutomatico:
         
         return mejores_params
     
+    # ============================================================
+    # FASE 3: Validación
+    # ============================================================
     def _fase_validacion(self, params_optimos):
-        """
-        FASE 3: Validación con multi-run.
-        Objetivo: Confirmar robustez y evitar overfitting.
-        """
         cfg_fase = self.config_fases.get("fase_3", {})
         trials_por_corrida = cfg_fase.get("trials_por_corrida", 800)
         corridas = cfg_fase.get("corridas", 5)
         modo_paralelo = cfg_fase.get("modo", "serie") == "paralelo"
-        
+
         self._log("\n" + "="*60)
         self._log("🛡️ FASE 3: Validación")
         self._log(f"   Modo: {'Paralelo' if modo_paralelo else 'Serie'} | {corridas} corridas de {trials_por_corrida} trials")
         self._log("="*60)
-        
+
         metrics_config = self._metrics_config_para_fase(3)
-        
-        # Usar rangos acotados alrededor de params_optimos
-        config_validacion = self._acotar_rangos(params_optimos)
-        
+
+        # !!! USAR RANGOS ORIGINALES (sin acotar) !!!
+        config_validacion = self.config_base_original.copy()
+
         resultados_validacion = []
-        mejores_params = params_optimos
+        mejores_params = None  # <--- NUEVO: inicializar como None
         mejor_score = 0
-        
-        # Variables para guardar métricas de la mejor corrida
+
         mejor_pf_train = 0
         mejor_pf_test = 0
         mejor_winrate_train = 0
@@ -464,78 +475,54 @@ class OptimizadorAutomatico:
         mejor_drawdown_test = 0
         mejor_trades_train = 0
         mejor_trades_test = 0
-        
+
         for run in range(corridas):
             self._log(f"\n   🔄 Corrida {run+1}/{corridas}...")
-            
-            # Optimizar sobre datos de entrenamiento (IS)
-            pf_train_score, params = run_single_optuna(
-                df=self.df_train,  # Necesitas tener df_train y df_test disponibles
+
+            best_score, params = run_single_optuna(
+                df=self.df_train,
                 config=config_validacion,
                 n_trials=trials_por_corrida,
                 modo_paralelo=modo_paralelo,
                 features=self.features,
                 metrics_config=metrics_config
             )
-            
-            # Traducir parámetros para backtest
-            MAPEO_AUTO_BACKTEST = {
-                "usar_rsi_long": "use_rsi_long",
-                "usar_rsi_short": "use_rsi_short",
-                "usar_adx": "use_adx_filter",
-                "usar_high": "enable_high_condition",
-                "usar_low": "enable_low_condition",
-                "usar_htf": "use_htf_filter",
-                "usar_sl": "use_stop_loss",
-                "usar_be": "activar_stop_be",
-                "usar_tp_long": "use_take_profit_long",
-                "usar_tp_short": "use_take_profit_short",
-                "usar_cooldown": "enable_cooldown",
-                "usar_reentry": "enable_reentry",
-                "usar_post_re": "enable_post_crossover_entry"
-            }
-            
-            cleaned_params = {}
-            for k, v in params.items():
-                if k in MAPEO_AUTO_BACKTEST:
-                    cleaned_params[MAPEO_AUTO_BACKTEST[k]] = v
-                else:
-                    cleaned_params[k] = v
-            
-            cleaned_features = {k: v for k, v in self.features.items() if v != "auto"}
-            
-            # Ejecutar backtest en TRAIN para obtener métricas reales
+
+            # Si el mejor score es 0 o no hay parámetros, saltamos
+            if best_score <= 0 or not params:
+                self._log(f"      ⚠️ Corrida {run+1}: sin parámetros válidos (score={best_score})")
+                continue
+
+            # Obtener parámetros completos (incluyendo fijos)
+            full_params = self._get_full_params(params)
+
+            # --- Backtest en TRAIN ---
             pf_train_backtest, equity_train, trades_train = run_backtest(
                 self.df_train,
-                **cleaned_params,
-                **cleaned_features,
+                **full_params,
                 **self.constants
             )
-            
-            # Calcular métricas de TRAIN
+
             winrate_train = len([t for t in trades_train if t['net_pnl'] > 0]) / len(trades_train) * 100 if trades_train else 0
             drawdown_train = calcular_drawdown_maximo(list(equity_train)) if len(equity_train) > 0 else 0
             n_trades_train = len(trades_train)
-            
-            # Validación sobre TEST (OOS)
+
+            # --- Backtest en TEST ---
             pf_oos, equity_test, trades_test = run_backtest(
                 self.df_test,
-                **cleaned_params,
-                **cleaned_features,
+                **full_params,
                 **self.constants
             )
-            
-            # Calcular métricas de TEST
+
             winrate_test = len([t for t in trades_test if t['net_pnl'] > 0]) / len(trades_test) * 100 if trades_test else 0
             drawdown_test = calcular_drawdown_maximo(list(equity_test)) if len(equity_test) > 0 else 0
             n_trades_test = len(trades_test)
-            
+
             resultados_validacion.append(pf_oos)
-            
-            # Guardar la mejor corrida por pf_oos
+
             if pf_oos > mejor_score:
                 mejor_score = pf_oos
-                mejores_params = params
+                mejores_params = params  # <--- AHORA se actualiza solo si hay éxito
                 mejor_pf_train = pf_train_backtest
                 mejor_pf_test = pf_oos
                 mejor_winrate_train = winrate_train
@@ -544,14 +531,24 @@ class OptimizadorAutomatico:
                 mejor_drawdown_test = drawdown_test
                 mejor_trades_train = n_trades_train
                 mejor_trades_test = n_trades_test
-                
                 self._log(f"      🆕 Nuevo mejor score: {pf_oos:.4f}")
-        
+
         # Estadísticas de validación
-        pf_mean = np.mean(resultados_validacion)
-        pf_std = np.std(resultados_validacion)
-        estabilidad = 1.0 - (pf_std / pf_mean) if pf_mean > 0 else 0
-        
+        if resultados_validacion:
+            pf_mean = np.mean(resultados_validacion)
+            pf_std = np.std(resultados_validacion)
+            estabilidad = 1.0 - (pf_std / pf_mean) if pf_mean > 0 else 0
+        else:
+            pf_mean = 0
+            pf_std = 0
+            estabilidad = 0
+            self._log("   ⚠️ No se obtuvieron parámetros válidos en ninguna corrida.")
+
+        # Si no se encontraron parámetros, usar los de la Fase 2 con advertencia
+        if mejores_params is None:
+            self._log("   ⚠️ Usando parámetros de la Fase 2 como fallback (no se validaron).")
+            mejores_params = params_optimos
+
         self.historial.append({
             "fase": 3,
             "nombre": "Validación",
@@ -562,9 +559,6 @@ class OptimizadorAutomatico:
             "trials_por_corrida": trials_por_corrida,
             "corridas": corridas,
             "modo": "paralelo" if modo_paralelo else "serie",
-            # ============================================================
-            # NUEVO: Guardar métricas de Train y Test de la mejor corrida
-            # ============================================================
             "pf_train": mejor_pf_train,
             "pf_test": mejor_pf_test,
             "winrate_train": mejor_winrate_train,
@@ -574,10 +568,10 @@ class OptimizadorAutomatico:
             "trades_train": mejor_trades_train,
             "trades_test": mejor_trades_test
         })
-        
+
         self._log(f"\n   ✅ Score promedio: {pf_mean:.4f} (±{pf_std:.4f})")
         self._log(f"   📊 Estabilidad: {estabilidad:.1%}")
-        
+
         return mejores_params
 
 
@@ -1127,6 +1121,8 @@ class OptimizadorAutomatico:
         except Exception as e:
             self._log(f"\n[ERROR] No se pudo guardar el CSV de trades: {e}")
 
+
+
     def _guardar_seed(self, best_params, resultado_final):
         """
         Guarda un archivo JSON (seed) con toda la configuración y resultados.
@@ -1227,50 +1223,26 @@ class OptimizadorAutomatico:
         # Resultado final
         resultado_final = self.historial[-1]
         
+
         # ============================================================
         # OBTENER TRADES Y EQUITY DEL BACKTEST FINAL
         # ============================================================
         from optimizador_main import run_backtest
-        #from config import CONSTANTS
-        
+
         # Limpiar features (quitar "auto")
         cleaned_features = {k: v for k, v in self.features.items() if v != "auto"}
-        
-        # ============================================================
-        # MAPEAR PARÁMETROS DE OPTUNA A LOS NOMBRES QUE ESPERA run_backtest
-        # ============================================================
-        MAPEO_AUTO_BACKTEST = {
-            "usar_rsi_long": "use_rsi_long",
-            "usar_rsi_short": "use_rsi_short",
-            "usar_adx": "use_adx_filter",
-            "usar_high": "enable_high_condition",
-            "usar_low": "enable_low_condition",
-            "usar_htf": "use_htf_filter",
-            "usar_sl": "use_stop_loss",
-            "usar_be": "activar_stop_be",
-            "usar_tp_long": "use_take_profit_long",
-            "usar_tp_short": "use_take_profit_short",
-            "usar_cooldown": "enable_cooldown",
-            "usar_reentry": "enable_reentry",
-            "usar_post_re": "enable_post_crossover_entry"
-        }
-        
-        # Traducir parámetros de Optuna a nombres correctos
-        cleaned_params = {}
-        for k, v in params_fase3.items():
-            if k in MAPEO_AUTO_BACKTEST:
-                cleaned_params[MAPEO_AUTO_BACKTEST[k]] = v
-            else:
-                cleaned_params[k] = v
-        
-        # Ejecutar backtest final con los mejores parámetros traducidos
+
+        # Obtener parámetros completos (incluyendo fijos)
+        full_params = self._get_full_params(params_fase3)
+
+        # Ejecutar backtest final con todos los parámetros
         pf_final, equity_curve_final, trades_final = run_backtest(
             self.df,  # Datos completos
-            **cleaned_params,
-            **cleaned_features,
+            **full_params,
             **self.constants
         )
         
+
         self._log("\n" + "="*60)
         self._log("✅ OPTIMIZACIÓN AUTOMÁTICA COMPLETADA")
         self._log("="*60)
@@ -1315,6 +1287,150 @@ class OptimizadorAutomatico:
                 print(f"   • Estabilidad: {fase['estabilidad']:.1%}")
         
         print("\n" + "="*70)
+
+
+
+
+    def _get_full_params(self, params_optuna):
+        """
+        Combina los parámetros de Optuna con los valores fijos de la configuración original.
+        Respeta los límites mínimos/máximos de los rangos originales.
+        """
+        MAPEO = {
+            "usar_rsi_long": "use_rsi_long",
+            "usar_rsi_short": "use_rsi_short",
+            "usar_adx": "use_adx_filter",
+            "usar_high": "enable_high_condition",
+            "usar_low": "enable_low_condition",
+            "usar_htf": "use_htf_filter",
+            "usar_sl": "use_stop_loss",
+            "usar_be": "activar_stop_be",
+            "usar_tp_long": "use_take_profit_long",
+            "usar_tp_short": "use_take_profit_short",
+            "usar_cooldown": "enable_cooldown",
+            "usar_reentry": "enable_reentry",
+            "usar_post_re": "enable_post_crossover_entry"
+        }
+
+        full_params = {}
+
+        # 1. Parámetros de Optuna (traducidos)
+        for k, v in params_optuna.items():
+            if k in MAPEO:
+                full_params[MAPEO[k]] = v
+            else:
+                full_params[k] = v
+
+        # 2. Parámetros fijos (min==max) y rangos variables con límites
+        # RSI
+        if "rsi_length" not in full_params:
+            r = self.config_base_original.get("rsi_length_range")
+            if r:
+                # Si es fijo, usar ese valor; si es variable, usar el valor por defecto (min)
+                full_params["rsi_length"] = int(r[0]) if r[0] == r[1] else int(r[0])
+        else:
+            # Validar que respete el rango
+            r = self.config_base_original.get("rsi_length_range")
+            if r:
+                full_params["rsi_length"] = max(r[0], min(r[1], full_params["rsi_length"]))
+
+        if "rsi_min" not in full_params:
+            r = self.config_base_original.get("rsi_min_range")
+            if r:
+                full_params["rsi_min"] = float(r[0]) if r[0] == r[1] else float(r[0])
+        else:
+            r = self.config_base_original.get("rsi_min_range")
+            if r:
+                full_params["rsi_min"] = max(r[0], min(r[1], full_params["rsi_min"]))
+
+        if "rsi_max" not in full_params:
+            r = self.config_base_original.get("rsi_max_range")
+            if r:
+                full_params["rsi_max"] = float(r[0]) if r[0] == r[1] else float(r[0])
+        else:
+            r = self.config_base_original.get("rsi_max_range")
+            if r:
+                full_params["rsi_max"] = max(r[0], min(r[1], full_params["rsi_max"]))
+
+        # ADX
+        if "adx_length" not in full_params:
+            r = self.config_base_original.get("adx_length_range")
+            if r:
+                full_params["adx_length"] = int(r[0]) if r[0] == r[1] else int(r[0])
+        else:
+            r = self.config_base_original.get("adx_length_range")
+            if r:
+                full_params["adx_length"] = max(r[0], min(r[1], full_params["adx_length"]))
+
+        if "adx_threshold" not in full_params:
+            r = self.config_base_original.get("adx_thr_range")
+            if r:
+                full_params["adx_threshold"] = float(r[0]) if r[0] == r[1] else float(r[0])
+        else:
+            r = self.config_base_original.get("adx_thr_range")
+            if r:
+                full_params["adx_threshold"] = max(r[0], min(r[1], full_params["adx_threshold"]))
+
+        # Lookback
+        if "lookback" not in full_params:
+            r = self.config_base_original.get("lookback_range")
+            if r:
+                full_params["lookback"] = int(r[0]) if r[0] == r[1] else int(r[0])
+        else:
+            r = self.config_base_original.get("lookback_range")
+            if r:
+                full_params["lookback"] = max(r[0], min(r[1], full_params["lookback"]))
+
+        # Validation window
+        if "validation_window" not in full_params:
+            r = self.config_base_original.get("valwin_range")
+            if r:
+                full_params["validation_window"] = int(r[0]) if r[0] == r[1] else int(r[0])
+        else:
+            r = self.config_base_original.get("valwin_range")
+            if r:
+                full_params["validation_window"] = max(r[0], min(r[1], full_params["validation_window"]))
+
+        # HTF
+        if "htf_length" not in full_params:
+            r = self.config_base_original.get("htf_length_range")
+            if r:
+                full_params["htf_length"] = int(r[0]) if r[0] == r[1] else int(r[0])
+        else:
+            r = self.config_base_original.get("htf_length_range")
+            if r:
+                full_params["htf_length"] = max(r[0], min(r[1], full_params["htf_length"]))
+
+        # Stop Loss, Take Profit, etc.
+        for param_key, range_key in [
+            ("stop_loss_pct", "sl_range"),
+            ("velas_para_be", "be_range"),
+            ("tp_long_pct", "tp_long_range"),
+            ("tp_short_pct", "tp_short_range"),
+            ("max_losing_streak", "mls_range"),
+            ("cooldown_bars", "cool_range"),
+            ("max_reentries_allowed", "re_range"),
+            ("max_post_reentries", "postre_range"),
+        ]:
+            if param_key not in full_params:
+                r = self.config_base_original.get(range_key)
+                if r:
+                    full_params[param_key] = int(r[0]) if isinstance(r[0], int) else float(r[0])
+            else:
+                r = self.config_base_original.get(range_key)
+                if r:
+                    if isinstance(r[0], int):
+                        full_params[param_key] = max(r[0], min(r[1], full_params[param_key]))
+                    else:
+                        full_params[param_key] = max(r[0], min(r[1], full_params[param_key]))
+
+        # 3. Parámetros booleanos fijos
+        for feat_key, param_key in MAPEO.items():
+            if self.features.get(feat_key) != "auto" and param_key not in full_params:
+                valor_fijo = bool(self.gui_values.get(feat_key, False))
+                full_params[param_key] = valor_fijo
+
+        return full_params
 
 
 
