@@ -1230,7 +1230,7 @@ class OptimizadorAutomatico:
         from optimizador_main import run_backtest
 
         # Limpiar features (quitar "auto")
-        cleaned_features = {k: v for k, v in self.features.items() if v != "auto"}
+        # cleaned_features = {k: v for k, v in self.features.items() if v != "auto"}
 
         # Obtener parámetros completos (incluyendo fijos)
         full_params = self._get_full_params(params_fase3)
@@ -1314,12 +1314,14 @@ class OptimizadorAutomatico:
 
         full_params = {}
 
+
         # 1. Parámetros de Optuna (traducidos)
         for k, v in params_optuna.items():
             if k in MAPEO:
                 full_params[MAPEO[k]] = v
             else:
                 full_params[k] = v
+
 
         # 2. Parámetros fijos (min==max) y rangos variables con límites
         # RSI
@@ -1429,6 +1431,36 @@ class OptimizadorAutomatico:
             if self.features.get(feat_key) != "auto" and param_key not in full_params:
                 valor_fijo = bool(self.gui_values.get(feat_key, False))
                 full_params[param_key] = valor_fijo
+
+
+
+        # 4. Asegurar que enable_long_trades y enable_short_trades se respeten
+        full_params["enable_long_trades"] = bool(self.gui_values.get("enable_long_trades", True))
+        full_params["enable_short_trades"] = bool(self.gui_values.get("enable_short_trades", True))
+
+
+        # ============================================================
+        # NUEVO: Forzar features específicos según dirección habilitada
+        # ============================================================
+        enable_long = full_params["enable_long_trades"]
+        enable_short = full_params["enable_short_trades"]
+        
+        
+        # Si Shorts están deshabilitados, forzar features de Shorts a False
+        if not enable_short:
+            full_params["use_rsi_short"] = False
+            full_params["use_take_profit_short"] = False
+            full_params["enable_low_condition"] = False
+
+
+        # Si Longs están deshabilitados, forzar features de Longs a False
+        if not enable_long:
+            full_params["use_rsi_long"] = False
+            full_params["use_take_profit_long"] = False
+            full_params["enable_high_condition"] = False
+            
+
+
 
         return full_params
 

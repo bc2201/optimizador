@@ -556,12 +556,36 @@ def objective(trial, df, config, features, metrics_config, study_cache, study_lo
     
     params = {}
 
+
+
+    # ============================================================
+    # NUEVO: Obtener banderas principales y forzar features según dirección
+    # ============================================================
+    enable_long_trades = features.get("enable_long_trades", True)
+    enable_short_trades = features.get("enable_short_trades", True)
+    
     def resolve(key, trial_key):
         """Resuelve si un feature está activo (True/False o Auto)."""
         mode = features.get(key, False)
         if mode == "auto":
             return trial.suggest_categorical(trial_key, [True, False])
         return bool(mode)
+    
+
+    # ============================================================
+    # NUEVO: Función para resolver con dependencia de dirección
+    # ============================================================
+    def resolve_with_direction(feature_key, trial_key, direction_enabled):
+        """
+        Resuelve un feature solo si la dirección correspondiente está habilitada.
+        Si la dirección está deshabilitada, retorna False (no se optimiza).
+        """
+        if not direction_enabled:
+            return False
+        return resolve(feature_key, trial_key)
+
+
+
 
     # ============================================================
     # FUNCIÓN AUXILIAR PARA SUGERIR VALORES FIJOS O RANGOS
@@ -605,8 +629,8 @@ def objective(trial, df, config, features, metrics_config, study_cache, study_lo
             return 0.0
 
     # --- RSI ---
-    usar_rsi_long = resolve("use_rsi_long", "usar_rsi_long")
-    usar_rsi_short = resolve("use_rsi_short", "usar_rsi_short")
+    usar_rsi_long = resolve_with_direction("use_rsi_long", "usar_rsi_long", enable_long_trades)
+    usar_rsi_short = resolve_with_direction("use_rsi_short", "usar_rsi_short", enable_short_trades)
 
     # RSI Length (solo si al menos uno está activo)
     if usar_rsi_long or usar_rsi_short:
@@ -655,8 +679,8 @@ def objective(trial, df, config, features, metrics_config, study_cache, study_lo
         params["adx_threshold"] = 18.0
 
     # --- HIGH/LOW ---
-    usar_high = resolve("enable_high_condition", "usar_high")
-    usar_low = resolve("enable_low_condition", "usar_low")
+    usar_high = resolve_with_direction("enable_high_condition", "usar_high", enable_long_trades)
+    usar_low = resolve_with_direction("enable_low_condition", "usar_low", enable_short_trades)
     if usar_high or usar_low:
         params["lookback"] = suggest_or_fixed(trial, "lookback", config.get("lookback_range"), is_int=True)
         if params["lookback"] is None:
@@ -700,8 +724,8 @@ def objective(trial, df, config, features, metrics_config, study_cache, study_lo
         params["velas_para_be"] = 3
 
     # --- TAKE PROFIT ---
-    usar_tp_long = resolve("use_take_profit_long", "usar_tp_long")
-    usar_tp_short = resolve("use_take_profit_short", "usar_tp_short")
+    usar_tp_long = resolve_with_direction("use_take_profit_long", "usar_tp_long", enable_long_trades)
+    usar_tp_short = resolve_with_direction("use_take_profit_short", "usar_tp_short", enable_short_trades)
     
     if usar_tp_long:
         params["tp_long_pct"] = suggest_or_fixed(trial, "tp_long_pct", config.get("tp_long_range"), is_int=False, step=0.1)
@@ -1449,12 +1473,26 @@ def run_optuna_with_gui(values, stop_event=None):
         cleaned_features = {k: v for k, v in features.items() if v != "auto"}
 
         # --- Backtest en TRAIN ---
+        
+        #pf_train_backtest, equity_curve_train, trades_train = run_backtest(
+        #    df_train, 
+        #    **params_for_backtest,
+        #    **cleaned_features, 
+        #    **CONSTANTS
+        #)
+
+        # Opción más limpia: fusionar con prioridad
+        backtest_kwargs = {
+            **CONSTANTS,
+            **cleaned_features,
+            **params_for_backtest
+        }
         pf_train_backtest, equity_curve_train, trades_train = run_backtest(
             df_train, 
-            **params_for_backtest,
-            **cleaned_features, 
-            **CONSTANTS
+            **backtest_kwargs
         )
+
+
 
         # Calcular métricas de TRAIN
         winrate_train = len([t for t in trades_train if t['net_pnl'] > 0]) / len(trades_train) * 100 if trades_train else 0
